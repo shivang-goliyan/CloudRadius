@@ -662,4 +662,46 @@ export const radiusService = {
 
     return disconnected;
   },
+
+  /**
+   * Clean up stale sessions that have no stop time
+   * Sessions are considered stale if no interim update was received
+   * within the threshold (default: 15 min = 3 missed interim updates at 5 min interval)
+   */
+  async cleanupStaleSessions(tenantSlug?: string, staleThresholdMinutes = 15): Promise<number> {
+    try {
+      const threshold = new Date(Date.now() - staleThresholdMinutes * 60 * 1000);
+
+      const where: Prisma.RadAcctWhereInput = {
+        acctstoptime: null,
+        OR: [
+          // Last update is older than threshold
+          { acctupdatetime: { lt: threshold } },
+          // No updates at all and session started before threshold
+          { acctupdatetime: null, acctstarttime: { lt: threshold } },
+        ],
+      };
+
+      if (tenantSlug) {
+        where.username = { startsWith: `${tenantSlug}_` };
+      }
+
+      const result = await prisma.radAcct.updateMany({
+        where,
+        data: {
+          acctstoptime: new Date(),
+          acctterminatecause: "Stale-Session",
+        },
+      });
+
+      if (result.count > 0) {
+        console.log(`[RADIUS] Cleaned up ${result.count} stale sessions`);
+      }
+
+      return result.count;
+    } catch (error) {
+      console.error("[RADIUS] Failed to cleanup stale sessions:", error);
+      throw error;
+    }
+  },
 };

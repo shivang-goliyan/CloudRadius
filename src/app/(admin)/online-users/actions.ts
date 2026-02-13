@@ -11,6 +11,27 @@ export interface ActionResponse {
   error?: string;
 }
 
+export async function cleanupStaleSessionsAction(): Promise<ActionResponse & { cleaned?: number }> {
+  try {
+    const { user } = await requireAuthorized("online_users", "edit");
+
+    if (!user.tenantSlug) {
+      return { success: false, error: "No tenant context" };
+    }
+
+    const cleaned = await radiusService.cleanupStaleSessions(user.tenantSlug, 15);
+
+    revalidatePath("/online-users");
+    return { success: true, cleaned };
+  } catch (error) {
+    console.error("Cleanup stale sessions error:", error);
+    return {
+      success: false,
+      error: safeErrorMessage(error, "Internal error"),
+    };
+  }
+}
+
 export async function disconnectUserAction(
   radiusUsername: string,
   nasIp: string

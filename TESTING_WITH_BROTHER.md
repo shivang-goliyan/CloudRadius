@@ -1,4 +1,4 @@
-# CloudRadius Testing Guide — With Brother's MikroTik Router
+# Raynet Testing Guide — With Brother's MikroTik Router
 
 **After deploying to Oracle Cloud, your brother points his router to the public IP.**
 **No Tailscale, no tunnels, no relay scripts — just like XceedNet.**
@@ -11,7 +11,7 @@ Follow `DEPLOYMENT_GUIDE.md` first. Once the server is live:
 
 ## Step 1.1: Add Brother's Router as NAS
 
-1. Open `https://yourdomain.com` → log in as admin
+1. Open `https://raynet.in` → log in as admin
 2. Go to **NAS** page → Click **Add NAS**
 
 | Field | Value |
@@ -41,7 +41,7 @@ Follow `DEPLOYMENT_GUIDE.md` first. Once the server is live:
 ## What You Send to Your Brother
 
 ```
-1. Dashboard URL: https://yourdomain.com
+1. Dashboard URL: https://raynet.in
 2. Dashboard login: (admin email + password)
 3. RADIUS Server IP: <YOUR_OCI_PUBLIC_IP>
 4. RADIUS Shared Secret: <the-secret-from-NAS-config>
@@ -57,7 +57,7 @@ Follow `DEPLOYMENT_GUIDE.md` first. Once the server is live:
 Open browser → go to `https://whatismyip.com` → note the IP.
 Send this to your brother (he needs it for NAS config in Step 1.1).
 
-## Step 2.2: Add CloudRadius as RADIUS Server
+## Step 2.2: Add Raynet as RADIUS Server
 
 Open **WinBox** → connect to router:
 
@@ -74,7 +74,7 @@ Open **WinBox** → connect to router:
 
 2. Click **OK**
 
-**Do NOT remove your existing RADIUS server.** CloudRadius is added alongside it.
+**Do NOT remove your existing RADIUS server.** Raynet is added alongside it.
 
 ## Step 2.3: Enable RADIUS Authentication
 
@@ -183,7 +183,7 @@ Open **WinBox** → connect to router:
 | PM2 running | `pm2 status` — web should be "online" |
 | Nginx running | `sudo systemctl status nginx` |
 | SSL valid | `sudo certbot certificates` |
-| DNS pointing | `dig yourdomain.com +short` — should show OCI IP |
+| DNS pointing | `dig raynet.in +short` — should show OCI IP |
 
 ## Speed Limit Not Working
 

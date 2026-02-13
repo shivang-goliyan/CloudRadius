@@ -11,7 +11,7 @@ upstream nextjs {
 # HTTP -> HTTPS redirect
 server {
     listen 80;
-    server_name yourdomain.com www.yourdomain.com;
+    server_name raynet.in www.raynet.in;
 
     location /.well-known/acme-challenge/ {
         root /var/www/html;
@@ -25,11 +25,11 @@ server {
 # HTTPS server
 server {
     listen 443 ssl http2;
-    server_name yourdomain.com www.yourdomain.com;
+    server_name raynet.in www.raynet.in;
 
     # SSL certificates (Certbot will fill these in)
-    ssl_certificate /etc/letsencrypt/live/yourdomain.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/yourdomain.com/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/raynet.in/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/raynet.in/privkey.pem;
     include /etc/letsencrypt/options-ssl-nginx.conf;
     ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
 

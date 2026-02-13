@@ -48,6 +48,18 @@ export async function setupBillingCron() {
     }
   );
 
+  // Clean up stale RADIUS sessions every 5 minutes
+  await billingQueue.add(
+    "cleanup-stale-sessions",
+    {},
+    {
+      repeat: {
+        pattern: "*/5 * * * *", // Every 5 minutes
+      },
+      jobId: "cleanup-stale-sessions-cron",
+    }
+  );
+
   // Disable expired subscribers daily at 2 AM
   await billingQueue.add(
     "disable-expired-subscribers",

@@ -1,4 +1,4 @@
-# CloudRadius Deployment Guide — Oracle Cloud Free Tier
+# Raynet Deployment Guide — Oracle Cloud Free Tier
 
 **Zero cost. Production-grade. Your brother points his MikroTik router to the public IP.**
 
@@ -19,13 +19,13 @@
 
 1. Go to **Networking → Virtual Cloud Networks**
 2. Click **Start VCN Wizard → Create VCN with Internet Connectivity**
-3. Name: `cloudradius-vcn`
+3. Name: `raynet-vcn`
 4. Leave CIDR defaults (`10.0.0.0/16`)
 5. Click **Next → Create**
 
 ## 1.3 Configure Firewall (Security List)
 
-Go to **Networking → Virtual Cloud Networks → cloudradius-vcn → Public Subnet → Default Security List**
+Go to **Networking → Virtual Cloud Networks → raynet-vcn → Public Subnet → Default Security List**
 
 Click **Add Ingress Rules** and add these (SSH on port 22 is already there):
 
@@ -42,12 +42,12 @@ Click **Add Ingress Rules** and add these (SSH on port 22 is already there):
 ## 1.4 Create the ARM VM
 
 1. Go to **Compute → Instances → Create Instance**
-2. **Name:** `cloudradius-server`
+2. **Name:** `raynet-server`
 3. **Image:** Ubuntu 22.04 (Canonical) — **ARM architecture** (Ampere)
 4. **Shape:** VM.Standard.A1.Flex
    - OCPUs: **4**
    - Memory: **24 GB**
-5. **Networking:** Select `cloudradius-vcn`, public subnet, assign public IPv4
+5. **Networking:** Select `raynet-vcn`, public subnet, assign public IPv4
 6. **Boot Volume:** 50 GB (default, free)
 7. **SSH Key:** Upload your public SSH key OR let OCI generate one (SAVE the private key!)
 8. Click **Create**
@@ -204,7 +204,7 @@ docker compose ps
 sudo mkdir -p /opt/cloudradius-app
 sudo chown ubuntu:ubuntu /opt/cloudradius-app
 
-git clone https://github.com/<YOUR_USERNAME>/CloudRadius.git /opt/cloudradius-app
+git clone https://github.com/<YOUR_USERNAME>/Raynet.git /opt/cloudradius-app
 cd /opt/cloudradius-app
 ```
 
@@ -223,12 +223,12 @@ REDIS_URL=redis://localhost:6379
 
 # Auth (generate with: openssl rand -base64 32)
 NEXTAUTH_SECRET=<YOUR_GENERATED_SECRET>
-NEXTAUTH_URL=https://yourdomain.com
+NEXTAUTH_URL=https://raynet.in
 AUTH_TRUST_HOST=true
 
 # App
-NEXT_PUBLIC_APP_URL=https://yourdomain.com
-NEXT_PUBLIC_APP_NAME=CloudRadius
+NEXT_PUBLIC_APP_URL=https://raynet.in
+NEXT_PUBLIC_APP_NAME=Raynet
 NODE_ENV=production
 
 # RADIUS
@@ -341,7 +341,7 @@ sudo ss -ulnp | grep -E '1812|1813'
 
 ## 6.1 Buy a Domain and Set DNS
 
-Buy a cheap domain (e.g., `cloudradius.xyz` on Namecheap/Cloudflare).
+Your domain is `raynet.in`.
 
 Add these DNS records at your registrar:
 
@@ -353,7 +353,7 @@ Add these DNS records at your registrar:
 
 Wait 5-10 minutes for DNS propagation. Verify:
 ```bash
-dig yourdomain.com +short
+dig raynet.in +short
 # Should show your OCI public IP
 ```
 
@@ -364,7 +364,7 @@ sudo cp /opt/cloudradius-app/deploy/nginx/cloudradius /etc/nginx/sites-available
 sudo ln -s /etc/nginx/sites-available/cloudradius /etc/nginx/sites-enabled/
 sudo rm -f /etc/nginx/sites-enabled/default
 
-# Edit the config — replace "yourdomain.com" with your actual domain
+# Edit the config — replace "raynet.in" with your actual domain
 sudo nano /etc/nginx/sites-available/cloudradius
 
 sudo nginx -t
@@ -374,7 +374,7 @@ sudo systemctl reload nginx
 ## 6.3 Get SSL Certificate
 
 ```bash
-sudo certbot --nginx -d yourdomain.com -d www.yourdomain.com
+sudo certbot --nginx -d raynet.in -d www.raynet.in
 # Enter email, agree to ToS, optionally share email with EFF
 ```
 
@@ -458,7 +458,7 @@ sudo systemctl status freeradius
 sudo systemctl status nginx
 
 # Test HTTPS
-curl -I https://yourdomain.com
+curl -I https://raynet.in
 
 # Test RADIUS
 echo "User-Name = test" | radclient localhost auth testing123
@@ -468,9 +468,9 @@ echo "User-Name = test" | radclient localhost auth testing123
 
 # PART 10: SET UP BROTHER'S TESTING
 
-## On CloudRadius Dashboard:
+## On Raynet Dashboard:
 
-1. Log in at `https://yourdomain.com`
+1. Log in at `https://raynet.in`
 2. **Add NAS:** Go to NAS page → Add NAS
    - Name: `Brother-Router`
    - IP: Brother's MikroTik public IP

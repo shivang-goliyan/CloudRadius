@@ -22,6 +22,8 @@ export const billingWorker = new Worker(
       await checkExpiringSubscribers();
     } else if (job.name === "disable-expired-subscribers") {
       await disableExpiredSubscribers();
+    } else if (job.name === "cleanup-stale-sessions") {
+      await cleanupStaleSessions();
     }
 
     console.log(`[Billing Worker] Job ${job.name} completed`);
@@ -237,6 +239,16 @@ async function disableExpiredSubscribers() {
   console.log(
     `[Disable Expired] Completed. Renewed: ${totalRenewed}, Disabled: ${totalDisabled}`
   );
+}
+
+/**
+ * Clean up stale RADIUS sessions
+ * Sessions with no interim update for over 60 minutes are marked as ended
+ */
+async function cleanupStaleSessions() {
+  console.log("[Stale Sessions] Starting cleanup...");
+  const cleaned = await radiusService.cleanupStaleSessions(undefined, 15);
+  console.log(`[Stale Sessions] Completed. Cleaned ${cleaned} stale sessions`);
 }
 
 // Worker event handlers
