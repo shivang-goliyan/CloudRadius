@@ -6,7 +6,7 @@ import { DataTable } from "@/components/tables/data-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { columns } from "./columns";
-import type { RadAcct } from "@prisma/client";
+import type { RadAcct } from "@/generated/prisma";
 import { Search, Download } from "lucide-react";
 import {
   Select,

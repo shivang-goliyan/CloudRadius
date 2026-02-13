@@ -1,7 +1,8 @@
 "use client";
 
 import type { ColumnDef } from "@tanstack/react-table";
-import type { Subscriber, Plan, NasDevice, Location } from "@prisma/client";
+import type { Subscriber, Plan, NasDevice, Location } from "@/generated/prisma";
+import type { Serialized } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,24 +17,28 @@ import { SortableHeader } from "@/components/tables/sortable-header";
 import Link from "next/link";
 import { format } from "date-fns";
 
-type SubscriberWithRelations = Subscriber & {
+type SubscriberWithRelations = Serialized<Subscriber & {
   plan: Pick<Plan, "id" | "name" | "downloadSpeed" | "uploadSpeed" | "speedUnit"> | null;
   nasDevice: Pick<NasDevice, "id" | "name" | "nasIp"> | null;
   location: Pick<Location, "id" | "name" | "type"> | null;
-};
+}>;
 
 const statusVariant: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
   ACTIVE: "default",
   EXPIRED: "destructive",
   DISABLED: "secondary",
-  SUSPENDED: "destructive",
+  SUSPENDED: "outline",
   TRIAL: "outline",
 };
 
+const statusClassName: Record<string, string> = {
+  SUSPENDED: "border-amber-500 bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400",
+};
+
 interface SubscriberColumnsProps {
-  onEdit: (subscriber: SubscriberWithRelations) => void;
-  onDelete: (id: string) => void;
-  onStatusChange: (id: string, status: string) => void;
+  onEdit?: (subscriber: SubscriberWithRelations) => void;
+  onDelete?: (id: string) => void;
+  onStatusChange?: (id: string, status: string) => void;
 }
 
 export function getSubscriberColumns({
@@ -103,6 +108,7 @@ export function getSubscriberColumns({
     {
       accessorKey: "connectionType",
       header: "Conn.",
+      filterFn: "equalsString",
       cell: ({ row }) => (
         <Badge variant="outline" className="text-xs">
           {row.original.connectionType}
@@ -112,8 +118,12 @@ export function getSubscriberColumns({
     {
       accessorKey: "status",
       header: "Status",
+      filterFn: "equalsString",
       cell: ({ row }) => (
-        <Badge variant={statusVariant[row.original.status] ?? "secondary"}>
+        <Badge
+          variant={statusVariant[row.original.status] ?? "secondary"}
+          className={statusClassName[row.original.status] ?? ""}
+        >
           {row.original.status}
         </Badge>
       ),
@@ -133,37 +143,47 @@ export function getSubscriberColumns({
                 <Eye className="mr-2 h-4 w-4" /> View Profile
               </Link>
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onEdit(row.original)}>
-              <Pencil className="mr-2 h-4 w-4" /> Edit
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            {row.original.status !== "ACTIVE" && (
-              <DropdownMenuItem onClick={() => onStatusChange(row.original.id, "ACTIVE")}>
-                <UserCheck className="mr-2 h-4 w-4" /> Activate
+            {onEdit && (
+              <DropdownMenuItem onClick={() => onEdit(row.original)}>
+                <Pencil className="mr-2 h-4 w-4" /> Edit
               </DropdownMenuItem>
             )}
-            {row.original.status !== "EXPIRED" && (
-              <DropdownMenuItem onClick={() => onStatusChange(row.original.id, "EXPIRED")}>
-                <Clock className="mr-2 h-4 w-4" /> Mark Expired
-              </DropdownMenuItem>
+            {onStatusChange && (
+              <>
+                <DropdownMenuSeparator />
+                {row.original.status !== "ACTIVE" && (
+                  <DropdownMenuItem onClick={() => onStatusChange(row.original.id, "ACTIVE")}>
+                    <UserCheck className="mr-2 h-4 w-4" /> Activate
+                  </DropdownMenuItem>
+                )}
+                {row.original.status !== "EXPIRED" && (
+                  <DropdownMenuItem onClick={() => onStatusChange(row.original.id, "EXPIRED")}>
+                    <Clock className="mr-2 h-4 w-4" /> Mark Expired
+                  </DropdownMenuItem>
+                )}
+                {row.original.status !== "SUSPENDED" && (
+                  <DropdownMenuItem onClick={() => onStatusChange(row.original.id, "SUSPENDED")}>
+                    <Ban className="mr-2 h-4 w-4" /> Suspend
+                  </DropdownMenuItem>
+                )}
+                {row.original.status !== "DISABLED" && (
+                  <DropdownMenuItem onClick={() => onStatusChange(row.original.id, "DISABLED")}>
+                    <UserX className="mr-2 h-4 w-4" /> Disable
+                  </DropdownMenuItem>
+                )}
+              </>
             )}
-            {row.original.status !== "SUSPENDED" && (
-              <DropdownMenuItem onClick={() => onStatusChange(row.original.id, "SUSPENDED")}>
-                <Ban className="mr-2 h-4 w-4" /> Suspend
-              </DropdownMenuItem>
+            {onDelete && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => onDelete(row.original.id)}
+                  className="text-destructive"
+                >
+                  <Trash2 className="mr-2 h-4 w-4" /> Delete
+                </DropdownMenuItem>
+              </>
             )}
-            {row.original.status !== "DISABLED" && (
-              <DropdownMenuItem onClick={() => onStatusChange(row.original.id, "DISABLED")}>
-                <UserX className="mr-2 h-4 w-4" /> Disable
-              </DropdownMenuItem>
-            )}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={() => onDelete(row.original.id)}
-              className="text-destructive"
-            >
-              <Trash2 className="mr-2 h-4 w-4" /> Delete
-            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       ),

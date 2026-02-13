@@ -49,7 +49,7 @@ export async function GET(
     // Convert stream to buffer
     const chunks: Uint8Array[] = [];
     for await (const chunk of stream) {
-      chunks.push(chunk);
+      chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
     }
     const buffer = Buffer.concat(chunks);
 

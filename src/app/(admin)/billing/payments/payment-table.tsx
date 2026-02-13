@@ -1,21 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import type { Payment, Subscriber, Invoice } from "@prisma/client";
+import type { Payment, Subscriber, Invoice } from "@/generated/prisma";
+import type { Serialized } from "@/lib/types";
 import { DataTable } from "@/components/tables/data-table";
 import { getPaymentColumns } from "./columns";
 import { Button } from "@/components/ui/button";
 import { Plus, Download } from "lucide-react";
 import { RecordPaymentDialog } from "./record-payment-dialog";
 
-type PaymentWithRelations = Payment & {
+type PaymentWithRelations = Serialized<Payment & {
   subscriber: Pick<Subscriber, "id" | "name" | "phone">;
   invoice: Pick<Invoice, "id" | "invoiceNumber"> | null;
-};
+}>;
 
 interface PaymentTableProps {
   data: PaymentWithRelations[];
-  subscribers: Subscriber[];
+  subscribers: Serialized<Subscriber>[];
 }
 
 export function PaymentTable({ data, subscribers }: PaymentTableProps) {

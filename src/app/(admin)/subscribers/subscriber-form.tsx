@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
@@ -8,7 +9,8 @@ import {
   type CreateSubscriberInput,
   type UpdateSubscriberInput,
 } from "@/lib/validations/subscriber.schema";
-import type { Subscriber, Plan, NasDevice, Location } from "@prisma/client";
+import type { Subscriber, Plan, NasDevice, Location } from "@/generated/prisma";
+import type { Serialized } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,19 +28,23 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Loader2 } from "lucide-react";
 import { useTransition } from "react";
 import { createSubscriber, updateSubscriber } from "./actions";
+import { markLeadConverted } from "../leads/actions";
 import { toast } from "sonner";
+import type { LeadPrefill } from "./subscriber-table";
 
 interface SubscriberFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  subscriber?: Subscriber | null;
-  plans: Plan[];
+  subscriber?: Serialized<Subscriber> | null;
+  plans: Serialized<Plan>[];
   nasDevices: NasDevice[];
   locations: Location[];
+  leadPrefill?: LeadPrefill | null;
 }
 
 export function SubscriberForm({
@@ -48,38 +54,39 @@ export function SubscriberForm({
   plans,
   nasDevices,
   locations,
+  leadPrefill,
 }: SubscriberFormProps) {
   const [isPending, startTransition] = useTransition();
   const isEditing = !!subscriber;
 
-  const form = useForm<CreateSubscriberInput | UpdateSubscriberInput>({
-    resolver: zodResolver(isEditing ? subscriberUpdateSchema : subscriberSchema),
-    defaultValues: subscriber
+  const getFormValues = (sub: typeof subscriber) =>
+    sub
       ? {
-          name: subscriber.name,
-          phone: subscriber.phone,
-          email: subscriber.email ?? "",
-          alternatePhone: subscriber.alternatePhone ?? "",
-          address: subscriber.address ?? "",
-          gpsCoordinates: subscriber.gpsCoordinates ?? "",
-          subscriberType: subscriber.subscriberType,
-          connectionType: subscriber.connectionType,
-          username: subscriber.username,
+          name: sub.name,
+          phone: sub.phone,
+          email: sub.email ?? "",
+          alternatePhone: sub.alternatePhone ?? "",
+          address: sub.address ?? "",
+          gpsCoordinates: sub.gpsCoordinates ?? "",
+          subscriberType: sub.subscriberType,
+          connectionType: sub.connectionType,
+          username: sub.username,
           password: "",
-          planId: subscriber.planId,
-          nasDeviceId: subscriber.nasDeviceId,
-          locationId: subscriber.locationId,
-          macAddress: subscriber.macAddress ?? "",
-          ipAddress: subscriber.ipAddress ?? "",
-          staticIp: subscriber.staticIp ?? "",
-          installationDate: subscriber.installationDate
-            ? new Date(subscriber.installationDate).toISOString().split("T")[0]
+          planId: sub.planId,
+          nasDeviceId: sub.nasDeviceId,
+          locationId: sub.locationId,
+          macAddress: sub.macAddress ?? "",
+          ipAddress: sub.ipAddress ?? "",
+          staticIp: sub.staticIp ?? "",
+          installationDate: sub.installationDate
+            ? new Date(sub.installationDate).toISOString().split("T")[0]
             : "",
-          expiryDate: subscriber.expiryDate
-            ? new Date(subscriber.expiryDate).toISOString().split("T")[0]
+          expiryDate: sub.expiryDate
+            ? new Date(sub.expiryDate).toISOString().split("T")[0]
             : "",
-          status: subscriber.status,
-          notes: subscriber.notes ?? "",
+          status: sub.status,
+          notes: sub.notes ?? "",
+          autoRenewal: sub.autoRenewal ?? false,
         }
       : {
           name: "",
@@ -87,11 +94,39 @@ export function SubscriberForm({
           email: "",
           username: "",
           password: "",
-          subscriberType: "RESIDENTIAL",
-          connectionType: "PPPOE",
-          status: "ACTIVE",
-        },
+          subscriberType: "RESIDENTIAL" as const,
+          connectionType: "PPPOE" as const,
+          status: "ACTIVE" as const,
+          autoRenewal: false,
+        };
+
+  const form = useForm<CreateSubscriberInput | UpdateSubscriberInput>({
+    resolver: zodResolver(isEditing ? subscriberUpdateSchema : subscriberSchema),
+    defaultValues: getFormValues(subscriber),
   });
+
+  // Reset form when subscriber changes (e.g. opening edit for a different subscriber)
+  useEffect(() => {
+    form.reset(getFormValues(subscriber));
+  }, [subscriber?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Pre-fill form with lead data when converting a lead
+  useEffect(() => {
+    if (leadPrefill && !subscriber) {
+      form.reset({
+        name: leadPrefill.name,
+        phone: leadPrefill.phone,
+        email: leadPrefill.email || "",
+        address: leadPrefill.address || "",
+        locationId: leadPrefill.locationId || null,
+        subscriberType: "RESIDENTIAL" as const,
+        connectionType: "PPPOE" as const,
+        status: "ACTIVE" as const,
+        username: "",
+        password: "",
+      });
+    }
+  }, [leadPrefill]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const onSubmit = (data: CreateSubscriberInput | UpdateSubscriberInput) => {
     startTransition(async () => {
@@ -100,7 +135,12 @@ export function SubscriberForm({
         : await createSubscriber(data);
 
       if (result.success) {
-        toast.success(subscriber ? "Subscriber updated" : "Subscriber created");
+        // If this was a lead conversion, mark the lead as converted
+        const newId = (result.data as { id?: string })?.id;
+        if (leadPrefill?.fromLeadId && newId) {
+          await markLeadConverted(leadPrefill.fromLeadId, newId);
+        }
+        toast.success(subscriber ? "Subscriber updated" : leadPrefill ? "Lead converted to subscriber" : "Subscriber created");
         onOpenChange(false);
         form.reset();
       } else {
@@ -114,7 +154,7 @@ export function SubscriberForm({
       <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            {subscriber ? "Edit Subscriber" : "Add Subscriber"}
+            {subscriber ? "Edit Subscriber" : leadPrefill ? "Convert Lead to Subscriber" : "Add Subscriber"}
           </DialogTitle>
         </DialogHeader>
 
@@ -314,6 +354,18 @@ export function SubscriberForm({
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+            <div className="flex items-center justify-between rounded-lg border border-border p-3">
+              <div>
+                <Label>Auto-Renewal</Label>
+                <p className="text-xs text-muted-foreground">
+                  Automatically renew plan from balance when expired
+                </p>
+              </div>
+              <Switch
+                checked={form.watch("autoRenewal") ?? false}
+                onCheckedChange={(v) => form.setValue("autoRenewal", v)}
+              />
             </div>
           </div>
 

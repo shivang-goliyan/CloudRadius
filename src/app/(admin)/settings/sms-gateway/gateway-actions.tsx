@@ -36,7 +36,7 @@ import { MoreHorizontal, Edit, Trash2, TestTube, Power, Wallet } from "lucide-re
 import { toast } from "sonner";
 import { deleteSmsGateway, toggleSmsGatewayStatus, testSmsGateway, getGatewayBalance } from "./actions";
 import { SmsGatewayForm } from "./gateway-form";
-import type { SmsGateway } from "@prisma/client";
+import type { SmsGateway } from "@/generated/prisma";
 
 interface SmsGatewayActionsProps {
   gateway: SmsGateway;

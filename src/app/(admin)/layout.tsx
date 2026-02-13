@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 import { Sidebar } from "@/components/layouts/sidebar";
 import { Topbar } from "@/components/layouts/topbar";
 import type { SessionUser } from "@/lib/types";
@@ -15,8 +16,6 @@ export default async function AdminLayout({
     redirect("/login");
   }
 
-  // Cast session user to our extended type since NextAuth v5 module augmentation
-  // doesn't reliably propagate to all contexts
   const sessionUser = session.user as Record<string, unknown>;
 
   const user: SessionUser = {
@@ -28,12 +27,28 @@ export default async function AdminLayout({
     tenantSlug: (sessionUser.tenantSlug as string) ?? null,
   };
 
+  // Super admins should use the super-admin route group
+  if (user.role === "SUPER_ADMIN") {
+    redirect("/super-admin/dashboard");
+  }
+
+  // Block suspended/inactive tenants at the layout level
+  if (user.tenantId) {
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: user.tenantId },
+      select: { status: true },
+    });
+    if (tenant && !["ACTIVE", "TRIAL"].includes(tenant.status)) {
+      redirect("/login?error=TenantSuspended");
+    }
+  }
+
   return (
     <div className="flex h-screen overflow-hidden">
-      <Sidebar />
+      <Sidebar userRole={user.role} />
       <div className="flex flex-1 flex-col overflow-hidden">
         <Topbar user={user} />
-        <main className="flex-1 overflow-y-auto bg-muted/30 p-6">
+        <main className="flex-1 overflow-y-auto bg-muted/30 p-4 pt-16 sm:p-6 sm:pt-6 md:pt-6">
           {children}
         </main>
       </div>

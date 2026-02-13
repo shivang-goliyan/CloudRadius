@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@/generated/prisma";
 import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
@@ -407,11 +407,258 @@ async function main() {
 
   console.log(`${subscribers.length} subscribers created`);
 
+  // Get first subscriber and staff user for references
+  const firstSubscriber = await prisma.subscriber.findFirst({
+    where: { tenantId: demoTenant.id, status: "ACTIVE" },
+  });
+  const staffUser = await prisma.user.findFirst({
+    where: { tenantId: demoTenant.id, role: "STAFF" },
+  });
+  const adminUser = await prisma.user.findFirst({
+    where: { tenantId: demoTenant.id, role: "TENANT_ADMIN" },
+  });
+
+  // ─── Phase 5: Voucher Batch ─────────────────────────────────
+  // Find the Hotspot 1-Day plan for vouchers
+  const hotspotPlan = await prisma.plan.findFirst({
+    where: { tenantId: demoTenant.id, name: "Hotspot 1-Day" },
+  });
+
+  if (hotspotPlan) {
+    const existingBatch = await prisma.voucherBatch.findFirst({
+      where: { tenantId: demoTenant.id, batchNumber: "BATCH-001" },
+    });
+
+    if (!existingBatch) {
+      const batch = await prisma.voucherBatch.create({
+        data: {
+          tenantId: demoTenant.id,
+          planId: hotspotPlan.id,
+          batchNumber: "BATCH-001",
+          prefix: "WIFI",
+          quantity: 20,
+          codeLength: 8,
+          validityDays: 1,
+          notes: "Demo hotspot voucher batch",
+        },
+      });
+
+      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+      const voucherData = [];
+      for (let i = 1; i <= 20; i++) {
+        let code = "";
+        for (let j = 0; j < 8; j++) {
+          code += chars[Math.floor(Math.random() * chars.length)];
+        }
+        const status = i <= 15 ? "GENERATED" : i <= 18 ? "SOLD" : "REDEEMED";
+        voucherData.push({
+          tenantId: demoTenant.id,
+          batchId: batch.id,
+          code: `WIFI-${code}`,
+          serialNumber: i,
+          status: status as "GENERATED" | "SOLD" | "REDEEMED",
+          ...(status === "SOLD" && {
+            soldTo: "Cyber Cafe Express",
+            soldAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+          }),
+          ...(status === "REDEEMED" && {
+            redeemedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000),
+            expiresAt: new Date(Date.now() + 0.5 * 24 * 60 * 60 * 1000),
+          }),
+        });
+      }
+
+      await prisma.voucher.createMany({ data: voucherData });
+      console.log("20 vouchers created in BATCH-001");
+    } else {
+      console.log("Voucher batch already exists, skipping");
+    }
+  }
+
+  // ─── Phase 5: Tickets ───────────────────────────────────────
+  const existingTicket = await prisma.ticket.findFirst({
+    where: { tenantId: demoTenant.id },
+  });
+
+  if (!existingTicket) {
+    const ticketData = [
+      {
+        ticketNumber: "TKT-001",
+        subject: "Internet not working since morning",
+        description: "My internet connection is down. Router shows connected but no internet access. I have restarted the router multiple times but the issue persists.",
+        category: "CONNECTIVITY" as const,
+        priority: "HIGH" as const,
+        status: "IN_PROGRESS" as const,
+        subscriberId: firstSubscriber?.id || null,
+        assignedToId: staffUser?.id || null,
+      },
+      {
+        ticketNumber: "TKT-002",
+        subject: "Speed is very slow during evenings",
+        description: "Every evening between 7 PM and 11 PM, the speed drops significantly. I am on the 50Mbps plan but getting only 5-10 Mbps during peak hours.",
+        category: "SPEED" as const,
+        priority: "MEDIUM" as const,
+        status: "ASSIGNED" as const,
+        assignedToId: staffUser?.id || null,
+      },
+      {
+        ticketNumber: "TKT-003",
+        subject: "Incorrect billing amount in last invoice",
+        description: "My last invoice shows Rs.999 but I am on the Basic 30Mbps plan which costs Rs.499. Please correct this.",
+        category: "BILLING" as const,
+        priority: "MEDIUM" as const,
+        status: "OPEN" as const,
+      },
+      {
+        ticketNumber: "TKT-004",
+        subject: "Request for new connection at Warje office",
+        description: "We need a new broadband connection for our office at Warje. Please schedule a site visit.",
+        category: "INSTALLATION" as const,
+        priority: "LOW" as const,
+        status: "RESOLVED" as const,
+        resolvedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
+      },
+      {
+        ticketNumber: "TKT-005",
+        subject: "WiFi router replacement needed",
+        description: "The WiFi router provided by you is not working properly. It keeps disconnecting every few hours. Please replace it.",
+        category: "CONNECTIVITY" as const,
+        priority: "CRITICAL" as const,
+        status: "OPEN" as const,
+        subscriberId: firstSubscriber?.id || null,
+      },
+    ];
+
+    for (const ticket of ticketData) {
+      const created = await prisma.ticket.create({
+        data: {
+          tenantId: demoTenant.id,
+          ...ticket,
+        },
+      });
+
+      // Add a comment on the first ticket
+      if (ticket.ticketNumber === "TKT-001" && staffUser) {
+        await prisma.ticketComment.create({
+          data: {
+            tenantId: demoTenant.id,
+            ticketId: created.id,
+            userId: staffUser.id,
+            message: "Checked the line. Issue is at the distribution point. Technician dispatched for repair.",
+            isInternal: false,
+          },
+        });
+        if (adminUser) {
+          await prisma.ticketComment.create({
+            data: {
+              tenantId: demoTenant.id,
+              ticketId: created.id,
+              userId: adminUser.id,
+              message: "Internal: Distribution switch at Kothrud tower needs replacement. Ordered new unit.",
+              isInternal: true,
+            },
+          });
+        }
+      }
+    }
+
+    console.log("5 tickets created");
+  } else {
+    console.log("Tickets already exist, skipping");
+  }
+
+  // ─── Phase 5: Leads ─────────────────────────────────────────
+  const existingLead = await prisma.lead.findFirst({
+    where: { tenantId: demoTenant.id },
+  });
+
+  if (!existingLead) {
+    const leadData = [
+      {
+        name: "Vishal Thakur",
+        phone: "+919812340001",
+        email: "vishal.t@example.com",
+        address: "12A, Kothrud Housing Society, Pune",
+        locationId: areaKothrud.id,
+        source: "WALK_IN" as const,
+        status: "NEW" as const,
+        notes: "Interested in 50Mbps plan. Asked about installation timeline.",
+      },
+      {
+        name: "Neha Sharma",
+        phone: "+919812340002",
+        email: "neha.s@example.com",
+        address: "Block B, Warje Apartments",
+        locationId: areaWarje.id,
+        source: "REFERRAL" as const,
+        status: "CONTACTED" as const,
+        notes: "Referred by Amit Kumar. Called once, interested in Premium plan.",
+      },
+      {
+        name: "Rajan Electronics",
+        phone: "+919812340003",
+        address: "Shop 45, Warje Commercial Complex",
+        locationId: areaWarje.id,
+        source: "PHONE" as const,
+        status: "SITE_SURVEY" as const,
+        notes: "Commercial connection needed. Requires static IP. Site survey scheduled for next week.",
+      },
+      {
+        name: "Priti Deshmukh",
+        phone: "+919812340004",
+        email: "priti.d@example.com",
+        locationId: areaKothrud.id,
+        source: "WEBSITE" as const,
+        status: "INSTALLATION_SCHEDULED" as const,
+        notes: "Basic plan. Installation scheduled for Feb 15.",
+      },
+      {
+        name: "Quick Bites Cafe",
+        phone: "+919812340005",
+        address: "FC Road, near Deccan Gymkhana",
+        source: "SOCIAL_MEDIA" as const,
+        status: "LOST" as const,
+        notes: "Was interested in hotspot solution for cafe. Went with competitor.",
+      },
+    ];
+
+    for (const lead of leadData) {
+      await prisma.lead.create({
+        data: {
+          tenantId: demoTenant.id,
+          ...lead,
+        },
+      });
+    }
+
+    console.log("5 leads created");
+  } else {
+    console.log("Leads already exist, skipping");
+  }
+
+  // ─── Phase 5: Captive Portal Config ─────────────────────────
+  await prisma.captivePortalConfig.upsert({
+    where: { tenantId: demoTenant.id },
+    update: {},
+    create: {
+      tenantId: demoTenant.id,
+      isEnabled: true,
+      primaryColor: "#2563eb",
+      welcomeTitle: "Welcome to Demo ISP WiFi",
+      welcomeMessage: "Connect to high-speed internet. Choose your preferred login method below.",
+      enableOtpLogin: true,
+      enableVoucherLogin: true,
+      enableUserPassLogin: true,
+    },
+  });
+  console.log("Captive portal config created");
+
   console.log("\n--- Seed completed ---");
   console.log("\nLogin credentials:");
   console.log("  Super Admin:  admin@cloudradius.com / admin123");
   console.log("  Tenant Admin: admin@demo-isp.com / demo123");
   console.log("  Staff:        staff@demo-isp.com / staff123");
+  console.log("\nCaptive Portal: /hotspot/demo-isp");
 }
 
 main()

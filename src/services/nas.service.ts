@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import type { CreateNasDeviceInput, UpdateNasDeviceInput } from "@/lib/validations/nas.schema";
-import type { NasDevice, Prisma } from "@prisma/client";
+import type { NasDevice, Prisma } from "@/generated/prisma";
 import { radiusService } from "./radius.service";
 
 export interface NasListParams {
@@ -46,7 +46,7 @@ export const nasService = {
     const [data, total] = await Promise.all([
       prisma.nasDevice.findMany({
         where,
-        include: { location: true },
+        include: { location: true, _count: { select: { subscribers: true } } },
         orderBy: { [sortBy]: sortOrder },
         skip: (page - 1) * pageSize,
         take: pageSize,
@@ -73,6 +73,14 @@ export const nasService = {
   },
 
   async create(tenantId: string, input: CreateNasDeviceInput) {
+    // Check for duplicate IP
+    const existing = await prisma.nasDevice.findFirst({
+      where: { tenantId, nasIp: input.nasIp },
+    });
+    if (existing) {
+      throw new Error(`A NAS device with IP ${input.nasIp} already exists`);
+    }
+
     const nas = await prisma.nasDevice.create({
       data: {
         tenantId,

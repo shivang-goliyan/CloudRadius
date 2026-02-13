@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { createSmsGateway, updateSmsGateway } from "./actions";
-import type { SmsGateway } from "@prisma/client";
+import type { SmsGateway } from "@/generated/prisma";
 
 interface SmsGatewayFormProps {
   children: React.ReactNode;
@@ -90,6 +90,7 @@ export function SmsGatewayForm({ children, gateway }: SmsGatewayFormProps) {
                   <SelectItem value="MSG91">MSG91</SelectItem>
                   <SelectItem value="TEXTLOCAL">Textlocal</SelectItem>
                   <SelectItem value="TWILIO">Twilio</SelectItem>
+                  <SelectItem value="WHATSAPP">WhatsApp Business API</SelectItem>
                   <SelectItem value="CUSTOM">Custom</SelectItem>
                 </SelectContent>
               </Select>

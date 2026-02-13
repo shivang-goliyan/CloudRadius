@@ -1,6 +1,8 @@
 import { requireTenantId } from "@/lib/session";
 import { billingService } from "@/services/billing.service";
+import { prisma } from "@/lib/prisma";
 import { InvoiceTable } from "./invoice-table";
+import { serialize } from "@/lib/types";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   FileText,
@@ -18,9 +20,14 @@ export const metadata = {
 export default async function InvoicesPage() {
   const tenantId = await requireTenantId();
 
-  const [result, stats] = await Promise.all([
+  const [result, stats, subscribers] = await Promise.all([
     billingService.list({ tenantId, pageSize: 100 }),
     billingService.getStats(tenantId),
+    prisma.subscriber.findMany({
+      where: { tenantId },
+      select: { id: true, name: true, phone: true, username: true, email: true, planId: true, status: true },
+      orderBy: { name: "asc" },
+    }),
   ]);
 
   const statCards = [
@@ -88,7 +95,7 @@ export default async function InvoicesPage() {
         ))}
       </div>
 
-      <InvoiceTable data={result.data} />
+      <InvoiceTable data={serialize(result.data)} subscribers={serialize(subscribers)} />
     </div>
   );
 }

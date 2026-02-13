@@ -23,7 +23,10 @@ server default {
     authorize {
         filter_username
         preprocess
+        chap
+        mschap
         sql
+        expiration
         pap
     }
 
@@ -34,7 +37,7 @@ server default {
         Auth-Type CHAP {
             chap
         }
-        Auth-Type MS-CHAP {
+        Auth-Type mschap {
             mschap
         }
     }

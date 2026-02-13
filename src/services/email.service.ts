@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import nodemailer from "nodemailer";
 import type { Transporter } from "nodemailer";
-import type { EmailConfig } from "@prisma/client";
+import type { EmailConfig } from "@/generated/prisma";
 
 export interface SendEmailParams {
   tenantId: string;

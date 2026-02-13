@@ -3,7 +3,7 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { nasDeviceSchema, type CreateNasDeviceInput } from "@/lib/validations/nas.schema";
-import type { NasDevice, Location } from "@prisma/client";
+import type { NasDevice, Location } from "@/generated/prisma";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,7 +22,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Loader2 } from "lucide-react";
-import { useTransition } from "react";
+import { useTransition, useEffect } from "react";
 import { createNasDevice, updateNasDevice } from "./actions";
 import { toast } from "sonner";
 
@@ -38,32 +38,39 @@ interface NasFormProps {
 export function NasForm({ open, onOpenChange, nas, locations }: NasFormProps) {
   const [isPending, startTransition] = useTransition();
 
-  const form = useForm<CreateNasDeviceInput>({
-    resolver: zodResolver(nasDeviceSchema),
-    defaultValues: nas
+  const getFormValues = (n?: NasWithLocation | null) =>
+    n
       ? {
-          name: nas.name,
-          shortName: nas.shortName ?? "",
-          nasIp: nas.nasIp,
-          secret: nas.secret,
-          nasType: nas.nasType,
-          description: nas.description ?? "",
-          locationId: nas.locationId,
-          ports: nas.ports,
-          community: nas.community ?? "",
-          status: nas.status,
+          name: n.name,
+          shortName: n.shortName ?? "",
+          nasIp: n.nasIp,
+          secret: n.secret,
+          nasType: n.nasType,
+          description: n.description ?? "",
+          locationId: n.locationId,
+          ports: n.ports,
+          community: n.community ?? "",
+          status: n.status,
         }
       : {
           name: "",
           shortName: "",
           nasIp: "",
           secret: "",
-          nasType: "MIKROTIK",
+          nasType: "MIKROTIK" as const,
           description: "",
           locationId: null,
-          status: "ACTIVE",
-        },
+          status: "ACTIVE" as const,
+        };
+
+  const form = useForm<CreateNasDeviceInput>({
+    resolver: zodResolver(nasDeviceSchema),
+    defaultValues: getFormValues(nas),
   });
+
+  useEffect(() => {
+    form.reset(getFormValues(nas));
+  }, [nas?.id]);
 
   const onSubmit = (data: CreateNasDeviceInput) => {
     startTransition(async () => {
@@ -179,6 +186,15 @@ export function NasForm({ open, onOpenChange, nas, locations }: NasFormProps) {
             <Label htmlFor="description">Description</Label>
             <Textarea id="description" rows={2} {...form.register("description")} />
           </div>
+
+          {Object.keys(form.formState.errors).length > 0 && (
+            <p className="text-sm text-destructive">
+              Please fix the errors above:{" "}
+              {Object.entries(form.formState.errors)
+                .map(([key, err]) => `${key}: ${err?.message}`)
+                .join(", ")}
+            </p>
+          )}
 
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

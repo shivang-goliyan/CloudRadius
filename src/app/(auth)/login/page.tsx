@@ -1,20 +1,41 @@
 "use client";
 
-import { Suspense, useState } from "react";
-import { signIn } from "next-auth/react";
+import { Suspense, useState, useEffect, useRef } from "react";
+import { signIn, signOut } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { toast } from "sonner";
-
+import { Eye, EyeOff } from "lucide-react";
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") || "/dashboard";
+  const errorParam = searchParams.get("error");
   const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(
+    errorParam === "TenantSuspended"
+      ? "Your organization has been suspended. Contact support."
+      : null
+  );
+  const signedOut = useRef(false);
+
+  // Clear stale session when redirected here due to tenant suspension
+  useEffect(() => {
+    if (errorParam === "TenantSuspended" && !signedOut.current) {
+      signedOut.current = true;
+      signOut({ redirect: false });
+    }
+  }, [errorParam]);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setIsLoading(true);
+    setErrorMessage(null);
+
+    // Clear ?error= from URL so NextAuth doesn't misinterpret it as a login failure
+    if (window.location.search.includes("error=")) {
+      window.history.replaceState({}, "", "/login");
+    }
 
     const formData = new FormData(event.currentTarget);
     const email = formData.get("email") as string;
@@ -25,16 +46,33 @@ function LoginForm() {
         email,
         password,
         redirect: false,
+        callbackUrl: callbackUrl,
       });
 
       if (result?.error) {
-        toast.error("Invalid email or password");
+        // Show generic error — do not reveal whether email exists or tenant is suspended
+        // The auth callback already handles suspension via thrown error message
+        if (result.error.includes("suspended")) {
+          setErrorMessage("Your organization has been suspended. Contact support.");
+        } else if (result.error.includes("Too many")) {
+          setErrorMessage(result.error);
+        } else {
+          setErrorMessage("Invalid email or password");
+        }
       } else {
         router.push(callbackUrl);
         router.refresh();
       }
-    } catch {
-      toast.error("Something went wrong. Please try again.");
+    } catch (err) {
+      // signIn may throw when authorize callback throws (e.g. suspended tenant)
+      const msg = err instanceof Error ? err.message : "";
+      if (msg.includes("suspended")) {
+        setErrorMessage("Your organization has been suspended. Contact support.");
+      } else if (msg.includes("Too many")) {
+        setErrorMessage(msg);
+      } else {
+        setErrorMessage("Invalid email or password");
+      }
     } finally {
       setIsLoading(false);
     }
@@ -46,6 +84,12 @@ function LoginForm() {
       <p className="mt-2 text-sm text-muted-foreground">
         Sign in to your account to continue
       </p>
+
+      {errorMessage && (
+        <div className="mt-4 rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {errorMessage}
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="mt-8 space-y-4">
         <div>
@@ -73,15 +117,28 @@ function LoginForm() {
           >
             Password
           </label>
-          <input
-            id="password"
-            name="password"
-            type="password"
-            autoComplete="current-password"
-            required
-            className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-            placeholder="Enter your password"
-          />
+          <div className="relative mt-1">
+            <input
+              id="password"
+              name="password"
+              type={showPassword ? "text" : "password"}
+              autoComplete="current-password"
+              required
+              className="block w-full rounded-md border border-input bg-background px-3 py-2 pr-10 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              placeholder="Enter your password"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute inset-y-0 right-0 flex items-center pr-3 text-muted-foreground hover:text-foreground"
+            >
+              {showPassword ? (
+                <EyeOff className="h-4 w-4" />
+              ) : (
+                <Eye className="h-4 w-4" />
+              )}
+            </button>
+          </div>
         </div>
 
         <div className="flex items-center justify-between">

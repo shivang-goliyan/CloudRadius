@@ -35,8 +35,8 @@ export async function sendCoaDisconnect(
     const command = `echo '${radclientInput}' | radclient ${nasIp}:${nasPort} disconnect "${secret}"`;
     const { stdout, stderr } = await execAsync(command, { timeout: 5000 });
 
-    // radclient returns success if it receives a response packet
-    if (stdout.includes("Received response ID")) {
+    // radclient returns "Received Disconnect-ACK" on success
+    if (stdout.includes("Received Disconnect-ACK")) {
       console.log(`[RADIUS] CoA disconnect successful for ${username} on ${nasIp}`);
       return true;
     }
@@ -78,7 +78,7 @@ Mikrotik-Rate-Limit = "${rateLimit}"`;
     const command = `echo '${radclientInput}' | radclient ${nasIp}:${nasPort} coa "${secret}"`;
     const { stdout, stderr } = await execAsync(command, { timeout: 5000 });
 
-    if (stdout.includes("Received response ID")) {
+    if (stdout.includes("Received CoA-ACK")) {
       console.log(
         `[RADIUS] CoA rate-change successful for ${username} on ${nasIp} to ${rateLimit}`
       );

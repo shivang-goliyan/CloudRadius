@@ -7,7 +7,7 @@ import {
   StyleSheet,
   Font,
 } from "@react-pdf/renderer";
-import type { Invoice, Subscriber, Plan, Payment } from "@prisma/client";
+import type { Invoice, Subscriber, Plan, Payment } from "@/generated/prisma";
 import { format } from "date-fns";
 
 type InvoiceWithRelations = Invoice & {

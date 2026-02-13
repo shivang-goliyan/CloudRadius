@@ -20,9 +20,14 @@ import {
   ChevronLeft,
   FileText,
   CreditCard,
+  Globe,
+  Building2,
+  Menu,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { APP_NAME } from "@/lib/constants";
+import { getNavItemsForRole } from "@/lib/rbac";
+import type { UserRole } from "@/generated/prisma";
 import { useState } from "react";
 
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -41,53 +46,41 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   Settings,
   FileText,
   CreditCard,
+  Globe,
+  Building2,
 };
 
-const navItems = [
-  { title: "Dashboard", href: "/dashboard", icon: "LayoutDashboard" },
-  { title: "Subscribers", href: "/subscribers", icon: "Users" },
-  { title: "Plans", href: "/plans", icon: "Package" },
-  { title: "Invoices", href: "/billing/invoices", icon: "FileText" },
-  { title: "Payments", href: "/billing/payments", icon: "CreditCard" },
-  { title: "Vouchers", href: "/vouchers", icon: "Ticket" },
-  { title: "NAS Devices", href: "/nas", icon: "Router" },
-  { title: "Locations", href: "/locations", icon: "MapPin" },
-  { title: "Online Users", href: "/online-users", icon: "Wifi" },
-  { title: "Sessions", href: "/sessions", icon: "History" },
-  { title: "Complaints", href: "/complaints", icon: "MessageSquare" },
-  { title: "Leads", href: "/leads", icon: "UserPlus" },
-  { title: "Reports", href: "/reports", icon: "BarChart3" },
-  { title: "Settings", href: "/settings", icon: "Settings" },
-];
+interface SidebarProps {
+  userRole?: UserRole;
+}
 
-export function Sidebar() {
+export function Sidebar({ userRole = "STAFF" }: SidebarProps) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
-  return (
-    <aside
-      className={cn(
-        "flex h-screen flex-col border-r border-border bg-sidebar transition-all duration-300",
-        collapsed ? "w-16" : "w-64"
-      )}
-    >
+  const navItems = getNavItemsForRole(userRole);
+  const homeHref = userRole === "SUPER_ADMIN" ? "/super-admin/dashboard" : "/dashboard";
+
+  const navContent = (
+    <>
       {/* Logo */}
       <div className="flex h-16 items-center justify-between border-b border-border px-4">
         {!collapsed && (
-          <Link href="/dashboard" className="flex items-center gap-2">
+          <Link href={homeHref} className="flex items-center gap-2" onClick={() => setMobileOpen(false)}>
             <Radio className="h-6 w-6 text-primary" />
             <span className="text-lg font-bold text-foreground">{APP_NAME}</span>
           </Link>
         )}
         {collapsed && (
-          <Link href="/dashboard" className="mx-auto">
+          <Link href={homeHref} className="mx-auto" onClick={() => setMobileOpen(false)}>
             <Radio className="h-6 w-6 text-primary" />
           </Link>
         )}
         <button
           onClick={() => setCollapsed(!collapsed)}
           className={cn(
-            "rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+            "hidden rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground md:block",
             collapsed && "mx-auto"
           )}
         >
@@ -109,6 +102,7 @@ export function Sidebar() {
               <li key={item.href}>
                 <Link
                   href={item.href}
+                  onClick={() => setMobileOpen(false)}
                   className={cn(
                     "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
                     isActive
@@ -134,6 +128,47 @@ export function Sidebar() {
           </p>
         </div>
       )}
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      {/* Mobile hamburger button */}
+      <button
+        onClick={() => setMobileOpen(true)}
+        className="fixed left-4 top-4 z-40 rounded-md bg-background p-2 text-muted-foreground shadow-md md:hidden"
+        aria-label="Open menu"
+      >
+        <Menu className="h-5 w-5" />
+      </button>
+
+      {/* Mobile overlay */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+
+      {/* Mobile sidebar */}
+      <aside
+        className={cn(
+          "fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-border bg-sidebar transition-transform duration-300 md:hidden",
+          mobileOpen ? "translate-x-0" : "-translate-x-full"
+        )}
+      >
+        {navContent}
+      </aside>
+
+      {/* Desktop sidebar */}
+      <aside
+        className={cn(
+          "hidden h-screen flex-col border-r border-border bg-sidebar transition-all duration-300 md:flex",
+          collapsed ? "w-16" : "w-64"
+        )}
+      >
+        {navContent}
+      </aside>
+    </>
   );
 }

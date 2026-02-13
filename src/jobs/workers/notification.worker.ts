@@ -6,7 +6,7 @@ import { notificationLogService } from "@/services/notification/notification-log
 import { smsService } from "@/services/sms/sms.service";
 import { emailService } from "@/services/email.service";
 import { format } from "date-fns";
-import type { NotificationType } from "@prisma/client";
+import type { NotificationType } from "@/generated/prisma";
 
 const connection = new Redis(process.env.REDIS_URL || "redis://localhost:6379", {
   maxRetriesPerRequest: null,
@@ -91,7 +91,7 @@ export const notificationWorker = new Worker(
             message,
             status: result.success ? "SENT" : "FAILED",
             error: result.error,
-            gatewayResponse: result.gatewayResponse,
+            gatewayResponse: result.gatewayResponse as Record<string, string | number | boolean | null> | undefined,
             sentAt: result.success ? new Date() : undefined,
           });
 
@@ -157,6 +157,46 @@ export const notificationWorker = new Worker(
             channel: "EMAIL",
             recipient: subscriber.email || "",
             subject: emailTemplate.subject || "",
+            message: "",
+            status: "FAILED",
+            error: error instanceof Error ? error.message : "Unknown error",
+          });
+        }
+      }
+
+      // 6. Send WhatsApp if template exists and phone available
+      const whatsappTemplate = await templateService.getTemplate(tenantId, notificationType, "WHATSAPP");
+      if (whatsappTemplate && subscriber.phone) {
+        try {
+          const message = templateService.renderTemplate(whatsappTemplate.template, variables);
+          const result = await smsService.sendWhatsApp(tenantId, subscriber.phone, message);
+
+          await notificationLogService.create({
+            tenantId,
+            subscriberId: subscriber.id,
+            type: notificationType,
+            channel: "WHATSAPP",
+            recipient: subscriber.phone,
+            message,
+            status: result.success ? "SENT" : "FAILED",
+            error: result.error,
+            gatewayResponse: result.gatewayResponse as Record<string, string | number | boolean | null> | undefined,
+            sentAt: result.success ? new Date() : undefined,
+          });
+
+          if (result.success) {
+            console.log(`[Notification Worker] WhatsApp sent to ${subscriber.phone}`);
+          } else {
+            console.error(`[Notification Worker] WhatsApp failed for ${subscriber.phone}: ${result.error}`);
+          }
+        } catch (error) {
+          console.error(`[Notification Worker] Failed to send WhatsApp:`, error);
+          await notificationLogService.create({
+            tenantId,
+            subscriberId: subscriber.id,
+            type: notificationType,
+            channel: "WHATSAPP",
+            recipient: subscriber.phone,
             message: "",
             status: "FAILED",
             error: error instanceof Error ? error.message : "Unknown error",

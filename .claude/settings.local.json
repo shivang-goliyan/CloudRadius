@@ -1,21 +1,15 @@
 {
   "permissions": {
     "allow": [
-      "Bash(node --version:*)",
-      "Bash(pnpm --version:*)",
-      "Bash(npm install:*)",
-      "Bash(pnpm create:*)",
-      "Bash(xcopy:*)",
-      "Bash(robocopy:*)",
-      "Bash(copy:*)",
-      "Bash(echo:*)",
-      "Bash(powershell:*)",
-      "Bash(pnpm install:*)",
-      "Bash(pnpm add:*)",
-      "Bash(npx shadcn@latest add:*)",
-      "Bash(pnpm build:*)",
-      "Bash(node -e:*)",
-      "Bash(npx next build:*)"
+      "Bash(*)",
+      "Read",
+      "Edit",
+      "Write",
+      "mcp__sequential-thinking__sequentialthinking"
+    ],
+    "deny": [
+      "Bash(rm -rf /)*",
+      "Bash(git push --force *)"
     ]
   }
 }

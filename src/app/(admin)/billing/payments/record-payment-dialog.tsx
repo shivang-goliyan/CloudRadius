@@ -3,7 +3,8 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { paymentSchema, type RecordPaymentInput } from "@/lib/validations/payment.schema";
-import type { Subscriber, Invoice } from "@prisma/client";
+import type { Subscriber } from "@/generated/prisma";
+import type { Serialized } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,13 +26,20 @@ import { Separator } from "@/components/ui/separator";
 import { Loader2 } from "lucide-react";
 import { useTransition, useEffect, useState } from "react";
 import { recordPayment } from "./actions";
+import { getPendingInvoices } from "../invoices/actions";
 import { toast } from "sonner";
-import { PaymentMethod } from "@prisma/client";
+import { PaymentMethod } from "@/generated/prisma";
+
+interface PendingInvoice {
+  id: string;
+  invoiceNumber: string;
+  balanceDue: string;
+}
 
 interface RecordPaymentDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  subscribers: Subscriber[];
+  subscribers: Serialized<Subscriber>[];
   preSelectedInvoiceId?: string;
 }
 
@@ -43,14 +51,14 @@ export function RecordPaymentDialog({
 }: RecordPaymentDialogProps) {
   const [isPending, startTransition] = useTransition();
   const [selectedSubscriberId, setSelectedSubscriberId] = useState<string>("");
-  const [pendingInvoices, setPendingInvoices] = useState<Invoice[]>([]);
+  const [pendingInvoices, setPendingInvoices] = useState<PendingInvoice[]>([]);
   const [loadingInvoices, setLoadingInvoices] = useState(false);
 
   const form = useForm<RecordPaymentInput>({
     resolver: zodResolver(paymentSchema),
     defaultValues: {
       subscriberId: "",
-      invoiceId: preSelectedInvoiceId || "",
+      invoiceId: preSelectedInvoiceId || undefined,
       amount: 0,
       method: "CASH",
       transactionId: "",
@@ -59,20 +67,39 @@ export function RecordPaymentDialog({
     },
   });
 
+  // Reset form when dialog closes
+  useEffect(() => {
+    if (!open) {
+      form.reset();
+      setSelectedSubscriberId("");
+      setPendingInvoices([]);
+    }
+  }, [open, form]);
+
   // Fetch pending invoices when subscriber is selected
   useEffect(() => {
     if (selectedSubscriberId) {
       setLoadingInvoices(true);
-      // In a real app, you'd fetch this from an API
-      // For now, we'll just set it to empty
+      getPendingInvoices(selectedSubscriberId).then((result) => {
+        if (result.success && result.data) {
+          setPendingInvoices(result.data);
+        } else {
+          setPendingInvoices([]);
+        }
+        setLoadingInvoices(false);
+      });
+    } else {
       setPendingInvoices([]);
-      setLoadingInvoices(false);
     }
   }, [selectedSubscriberId]);
 
   const onSubmit = (data: RecordPaymentInput) => {
+    const cleanData = {
+      ...data,
+      invoiceId: data.invoiceId || undefined,
+    };
     startTransition(async () => {
-      const result = await recordPayment(data);
+      const result = await recordPayment(cleanData);
 
       if (result.success) {
         toast.success("Payment recorded successfully");
@@ -93,139 +120,138 @@ export function RecordPaymentDialog({
 
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
           {/* Subscriber Selection */}
-          <div className="space-y-4">
-            <h4 className="text-sm font-medium">Subscriber</h4>
-            <div className="space-y-2">
-              <Label>Select Subscriber *</Label>
-              <Select
-                value={form.watch("subscriberId")}
-                onValueChange={(value) => {
-                  form.setValue("subscriberId", value);
-                  setSelectedSubscriberId(value);
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Choose subscriber..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {subscribers.map((subscriber) => (
-                    <SelectItem key={subscriber.id} value={subscriber.id}>
-                      {subscriber.name} ({subscriber.phone})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {form.formState.errors.subscriberId && (
-                <p className="text-xs text-destructive">
-                  {form.formState.errors.subscriberId.message}
-                </p>
-              )}
-            </div>
+          <div className="space-y-2">
+            <Label>Subscriber *</Label>
+            <Select
+              value={form.watch("subscriberId")}
+              onValueChange={(value) => {
+                form.setValue("subscriberId", value);
+                setSelectedSubscriberId(value);
+                form.setValue("invoiceId", undefined);
+                form.setValue("amount", 0);
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Choose subscriber..." />
+              </SelectTrigger>
+              <SelectContent>
+                {subscribers.map((subscriber) => (
+                  <SelectItem key={subscriber.id} value={subscriber.id}>
+                    {subscriber.name} ({subscriber.phone})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {form.formState.errors.subscriberId && (
+              <p className="text-xs text-destructive">
+                {form.formState.errors.subscriberId.message}
+              </p>
+            )}
           </div>
 
           <Separator />
 
-          {/* Invoice Selection (Optional) */}
-          <div className="space-y-4">
-            <h4 className="text-sm font-medium">Invoice (Optional)</h4>
-            <div className="space-y-2">
-              <Label>Link to Invoice</Label>
-              <Select
-                value={form.watch("invoiceId")}
-                onValueChange={(value) => form.setValue("invoiceId", value)}
-                disabled={!selectedSubscriberId || loadingInvoices}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select invoice (optional)..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">No invoice</SelectItem>
-                  {pendingInvoices.map((invoice) => (
-                    <SelectItem key={invoice.id} value={invoice.id}>
-                      {(invoice as any).invoiceNumber} - ₹
-                      {Number((invoice as any).balanceDue).toFixed(2)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {!selectedSubscriberId && (
-                <p className="text-xs text-muted-foreground">
-                  Select a subscriber first to view pending invoices
-                </p>
-              )}
-            </div>
+          {/* Invoice Selection */}
+          <div className="space-y-2">
+            <Label>Link to Invoice (Optional)</Label>
+            <Select
+              value={form.watch("invoiceId") || "none"}
+              onValueChange={(value) => {
+                const invoiceId = value === "none" ? undefined : value;
+                form.setValue("invoiceId", invoiceId);
+                if (invoiceId) {
+                  const inv = pendingInvoices.find((i) => i.id === invoiceId);
+                  if (inv) {
+                    form.setValue("amount", Number(inv.balanceDue));
+                  }
+                }
+              }}
+              disabled={!selectedSubscriberId || loadingInvoices}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder={loadingInvoices ? "Loading..." : "Select invoice..."} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No invoice</SelectItem>
+                {pendingInvoices.map((invoice) => (
+                  <SelectItem key={invoice.id} value={invoice.id}>
+                    {invoice.invoiceNumber} — ₹{Number(invoice.balanceDue).toFixed(2)} due
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {!selectedSubscriberId && (
+              <p className="text-xs text-muted-foreground">
+                Select a subscriber first to see pending invoices
+              </p>
+            )}
+            {selectedSubscriberId && pendingInvoices.length === 0 && !loadingInvoices && (
+              <p className="text-xs text-muted-foreground">
+                No pending invoices for this subscriber
+              </p>
+            )}
           </div>
 
           <Separator />
 
           {/* Payment Details */}
-          <div className="space-y-4">
-            <h4 className="text-sm font-medium">Payment Details</h4>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label>Amount *</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  {...form.register("amount", { valueAsNumber: true })}
-                  placeholder="0.00"
-                />
-                {form.formState.errors.amount && (
-                  <p className="text-xs text-destructive">
-                    {form.formState.errors.amount.message}
-                  </p>
-                )}
-              </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Amount *</Label>
+              <Input
+                type="number"
+                step="0.01"
+                {...form.register("amount", { valueAsNumber: true })}
+                placeholder="0.00"
+              />
+              {form.formState.errors.amount && (
+                <p className="text-xs text-destructive">
+                  {form.formState.errors.amount.message}
+                </p>
+              )}
+            </div>
 
-              <div className="space-y-2">
-                <Label>Payment Method *</Label>
-                <Select
-                  value={form.watch("method")}
-                  onValueChange={(value) =>
-                    form.setValue("method", value as PaymentMethod)
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="CASH">Cash</SelectItem>
-                    <SelectItem value="UPI">UPI</SelectItem>
-                    <SelectItem value="CARD">Card</SelectItem>
-                    <SelectItem value="BANK_TRANSFER">Bank Transfer</SelectItem>
-                    <SelectItem value="PAYMENT_GATEWAY">Payment Gateway</SelectItem>
-                    <SelectItem value="VOUCHER">Voucher</SelectItem>
-                  </SelectContent>
-                </Select>
-                {form.formState.errors.method && (
-                  <p className="text-xs text-destructive">
-                    {form.formState.errors.method.message}
-                  </p>
-                )}
-              </div>
+            <div className="space-y-2">
+              <Label>Payment Method *</Label>
+              <Select
+                value={form.watch("method")}
+                onValueChange={(value) =>
+                  form.setValue("method", value as PaymentMethod)
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="CASH">Cash</SelectItem>
+                  <SelectItem value="UPI">UPI</SelectItem>
+                  <SelectItem value="CARD">Card</SelectItem>
+                  <SelectItem value="BANK_TRANSFER">Bank Transfer</SelectItem>
+                  <SelectItem value="PAYMENT_GATEWAY">Payment Gateway</SelectItem>
+                  <SelectItem value="VOUCHER">Voucher</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
-              <div className="space-y-2 sm:col-span-2">
-                <Label>Transaction ID / Reference Number</Label>
-                <Input
-                  {...form.register("transactionId")}
-                  placeholder="e.g., UPI123456789, Cheque #12345"
-                />
-              </div>
+            <div className="space-y-2 sm:col-span-2">
+              <Label>Transaction ID / Reference</Label>
+              <Input
+                {...form.register("transactionId")}
+                placeholder="e.g., UPI123456789, Cheque #12345"
+              />
             </div>
           </div>
 
           <Separator />
 
           {/* Notes */}
-          <div className="space-y-4">
-            <h4 className="text-sm font-medium">Notes</h4>
-            <div className="space-y-2">
-              <Textarea
-                {...form.register("notes")}
-                placeholder="Additional notes (optional)..."
-                rows={3}
-              />
-            </div>
+          <div className="space-y-2">
+            <Label>Notes</Label>
+            <Textarea
+              {...form.register("notes")}
+              placeholder="Additional notes (optional)..."
+              rows={3}
+            />
           </div>
 
           <Separator />

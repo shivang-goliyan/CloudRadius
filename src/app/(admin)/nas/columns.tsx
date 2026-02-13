@@ -1,7 +1,7 @@
 "use client";
 
 import type { ColumnDef } from "@tanstack/react-table";
-import type { NasDevice, Location } from "@prisma/client";
+import type { NasDevice, Location } from "@/generated/prisma";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,10 +10,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { MoreHorizontal, Pencil, Trash2, Users } from "lucide-react";
 import { SortableHeader } from "@/components/tables/sortable-header";
 
-type NasWithLocation = NasDevice & { location: Location | null };
+export type NasWithLocation = NasDevice & {
+  location: Location | null;
+  _count: { subscribers: number };
+};
 
 interface NasColumnsProps {
   onEdit: (nas: NasWithLocation) => void;
@@ -52,6 +55,19 @@ export function getNasColumns({ onEdit, onDelete }: NasColumnsProps): ColumnDef<
       accessorKey: "location",
       header: "Location",
       cell: ({ row }) => row.original.location?.name ?? "-",
+    },
+    {
+      id: "subscribers",
+      header: "Subscribers",
+      cell: ({ row }) => {
+        const count = row.original._count.subscribers;
+        return (
+          <span className="flex items-center gap-1 text-sm">
+            <Users className="h-3.5 w-3.5 text-muted-foreground" />
+            {count}
+          </span>
+        );
+      },
     },
     {
       accessorKey: "status",

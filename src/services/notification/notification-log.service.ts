@@ -3,7 +3,8 @@ import type {
   NotificationType,
   NotificationChannel,
   NotificationStatus,
-} from "@prisma/client";
+  Prisma,
+} from "@/generated/prisma";
 
 export interface CreateNotificationLogParams {
   tenantId: string;
@@ -15,14 +16,14 @@ export interface CreateNotificationLogParams {
   message: string;
   status: NotificationStatus;
   error?: string;
-  gatewayResponse?: Record<string, unknown>;
+  gatewayResponse?: Prisma.InputJsonValue;
   sentAt?: Date;
 }
 
 export interface UpdateNotificationLogParams {
   status: NotificationStatus;
   error?: string;
-  gatewayResponse?: Record<string, unknown>;
+  gatewayResponse?: Prisma.InputJsonValue;
   sentAt?: Date;
 }
 

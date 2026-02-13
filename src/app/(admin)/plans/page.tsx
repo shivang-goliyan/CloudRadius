@@ -1,6 +1,7 @@
 import { requireTenantId } from "@/lib/session";
 import { planService } from "@/services/plan.service";
 import { PlanTable } from "./plan-table";
+import { serialize } from "@/lib/types";
 
 export const metadata = {
   title: "Plans",
@@ -19,7 +20,7 @@ export default async function PlansPage() {
         </p>
       </div>
 
-      <PlanTable data={result.data} />
+      <PlanTable data={serialize(result.data)} />
     </div>
   );
 }

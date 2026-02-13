@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import type { Prisma, InvoiceStatus } from "@prisma/client";
+import type { Prisma, InvoiceStatus } from "@/generated/prisma";
 
 export interface InvoiceListParams {
   tenantId: string;
@@ -160,7 +160,7 @@ export const billingService = {
         dueDate: input.dueDate,
         description: input.description,
         notes: input.notes,
-        planDetails,
+        planDetails: planDetails ?? undefined,
         status: "ISSUED",
       },
       include: { subscriber: true, plan: true },

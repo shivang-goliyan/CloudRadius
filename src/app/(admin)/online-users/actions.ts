@@ -1,9 +1,10 @@
 "use server";
 
-import { requireTenantUser } from "@/lib/session";
+import { requireAuthorized } from "@/lib/session";
 import { radiusService } from "@/services/radius.service";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
+import { safeErrorMessage } from "@/lib/types";
 
 export interface ActionResponse {
   success: boolean;
@@ -15,15 +16,11 @@ export async function disconnectUserAction(
   nasIp: string
 ): Promise<ActionResponse> {
   try {
-    const user = await requireTenantUser();
-
-    if (!user.tenantId) {
-      return { success: false, error: "No tenant context" };
-    }
+    const { tenantId } = await requireAuthorized("online_users", "edit");
 
     // Get NAS secret
     const nas = await prisma.nasDevice.findFirst({
-      where: { tenantId: user.tenantId, nasIp },
+      where: { tenantId, nasIp },
     });
 
     if (!nas) {
@@ -47,7 +44,7 @@ export async function disconnectUserAction(
     console.error("Disconnect action error:", error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : "Internal error",
+      error: safeErrorMessage(error, "Internal error"),
     };
   }
 }

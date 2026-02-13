@@ -4,8 +4,9 @@ import type {
   CreateSubscriberInput,
   UpdateSubscriberInput,
 } from "@/lib/validations/subscriber.schema";
-import type { Prisma, SubscriberStatus } from "@prisma/client";
+import type { Prisma, SubscriberStatus } from "@/generated/prisma";
 import { radiusService } from "./radius.service";
+import { buildRadiusUsername, buildMikroTikRateLimit } from "@/lib/radius-utils";
 
 export interface SubscriberListParams {
   tenantId: string;
@@ -121,6 +122,7 @@ export const subscriberService = {
         lastRenewalDate: new Date(),
         status: input.status,
         notes: input.notes || null,
+        autoRenewal: input.autoRenewal ?? false,
       },
     });
 
@@ -131,13 +133,23 @@ export const subscriberService = {
     });
 
     try {
-      await radiusService.syncSubscriberAuth(tenant.slug, subscriber);
-      if (subscriber.planId) {
-        await radiusService.syncSubscriberPlan(
-          tenant.slug,
-          subscriber.username,
-          subscriber.planId
-        );
+      await radiusService.syncSubscriberAuth(tenant.slug, subscriber, input.password);
+
+      // Sync reply attributes (static IP)
+      await radiusService.syncSubscriberReplyAttributes(tenant.slug, subscriber);
+
+      if (subscriber.status === "ACTIVE") {
+        // Active subscriber — enable RADIUS and assign plan
+        if (subscriber.planId) {
+          await radiusService.syncSubscriberPlan(
+            tenant.slug,
+            subscriber.username,
+            subscriber.planId
+          );
+        }
+      } else {
+        // Non-active subscriber — block RADIUS access from the start
+        await radiusService.disableSubscriberRadius(tenant.slug, subscriber.username);
       }
     } catch (error) {
       console.error("[SUBSCRIBER] RADIUS sync failed on create:", error);
@@ -173,6 +185,7 @@ export const subscriberService = {
       expiryDate: input.expiryDate ? new Date(input.expiryDate) : null,
       status: input.status,
       notes: input.notes || null,
+      autoRenewal: input.autoRenewal,
     };
 
     // Only update password if provided
@@ -192,12 +205,52 @@ export const subscriberService = {
     });
 
     try {
-      await radiusService.syncSubscriberAuth(tenant.slug, updated);
-      await radiusService.syncSubscriberPlan(
-        tenant.slug,
-        updated.username,
-        updated.planId
-      );
+      // Sync password, expiration, and MAC binding
+      await radiusService.syncSubscriberAuth(tenant.slug, updated, input.password || undefined);
+
+      // Sync reply attributes (static IP)
+      await radiusService.syncSubscriberReplyAttributes(tenant.slug, updated);
+
+      if (updated.status === "ACTIVE") {
+        // Ensure access is enabled
+        await radiusService.enableSubscriberRadius(tenant.slug, updated);
+        await radiusService.syncSubscriberPlan(
+          tenant.slug,
+          updated.username,
+          updated.planId
+        );
+
+        // If plan changed and subscriber is online, send CoA with new rate limit
+        const planChanged = existing.planId !== updated.planId;
+        if (planChanged && updated.planId) {
+          const newPlan = await prisma.plan.findUnique({ where: { id: updated.planId } });
+          if (newPlan) {
+            const activeSessions = await radiusService.getUserActiveSessions(
+              tenant.slug,
+              updated.username
+            );
+            const rateLimit = buildMikroTikRateLimit(newPlan);
+
+            for (const session of activeSessions) {
+              // Get NAS secret for CoA
+              const nas = await prisma.nasDevice.findFirst({
+                where: { tenantId, nasIp: session.nasipaddress },
+              });
+              if (nas) {
+                await radiusService.changeUserBandwidth(
+                  session.nasipaddress,
+                  buildRadiusUsername(tenant.slug, updated.username),
+                  nas.secret,
+                  rateLimit
+                );
+              }
+            }
+          }
+        }
+      } else {
+        // Non-active — block RADIUS access
+        await radiusService.disableSubscriberRadius(tenant.slug, updated.username);
+      }
     } catch (error) {
       console.error("[SUBSCRIBER] RADIUS sync failed on update:", error);
     }
@@ -217,24 +270,37 @@ export const subscriberService = {
       data: { status },
     });
 
-    // Disconnect active sessions if subscriber is disabled, suspended, or expired
-    if (["DISABLED", "SUSPENDED", "EXPIRED"].includes(status)) {
-      const tenant = await prisma.tenant.findUniqueOrThrow({
-        where: { id: tenantId },
-        select: { slug: true },
-      });
+    const tenant = await prisma.tenant.findUniqueOrThrow({
+      where: { id: tenantId },
+      select: { slug: true },
+    });
 
-      if (existing.nasDevice) {
-        try {
+    try {
+      if (status === "ACTIVE") {
+        // Reactivating — enable RADIUS access and restore plan mapping
+        await radiusService.enableSubscriberRadius(tenant.slug, updated);
+        if (updated.planId) {
+          await radiusService.syncSubscriberPlan(
+            tenant.slug,
+            updated.username,
+            updated.planId
+          );
+        }
+      } else {
+        // EXPIRED/SUSPENDED/DISABLED — block RADIUS access
+        await radiusService.disableSubscriberRadius(tenant.slug, existing.username);
+
+        // Disconnect active sessions
+        if (existing.nasDevice) {
           await radiusService.disconnectAllUserSessions(
             tenant.slug,
             existing.username,
             existing.nasDevice.secret
           );
-        } catch (error) {
-          console.error("[SUBSCRIBER] Failed to disconnect sessions:", error);
         }
       }
+    } catch (error) {
+      console.error("[SUBSCRIBER] RADIUS sync failed on status change:", error);
     }
 
     return updated;
@@ -276,6 +342,38 @@ export const subscriberService = {
     ]);
 
     return { total, active, expired, disabled, suspended };
+  },
+
+  async bulkCreate(
+    tenantId: string,
+    subscribers: CreateSubscriberInput[]
+  ): Promise<{
+    created: number;
+    failed: number;
+    errors: Array<{ row: number; username: string; error: string }>;
+  }> {
+    const results = {
+      created: 0,
+      failed: 0,
+      errors: [] as Array<{ row: number; username: string; error: string }>,
+    };
+
+    for (let i = 0; i < subscribers.length; i++) {
+      const input = subscribers[i];
+      try {
+        await this.create(tenantId, input);
+        results.created++;
+      } catch (error) {
+        results.failed++;
+        results.errors.push({
+          row: i + 1,
+          username: input.username,
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+    }
+
+    return results;
   },
 
   async exportAll(tenantId: string) {

@@ -1,14 +1,15 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireTenantId } from "@/lib/session";
+import { requireAuthorized } from "@/lib/session";
 import { smsService } from "@/services/sms/sms.service";
 import { smsGatewaySchema, testSmsSchema } from "@/lib/validations/sms-gateway.schema";
-import type { SmsProvider } from "@prisma/client";
+import type { SmsProvider } from "@/generated/prisma";
+import { safeErrorMessage } from "@/lib/types";
 
 export async function createSmsGateway(formData: FormData) {
   try {
-    const tenantId = await requireTenantId();
+    const { tenantId } = await requireAuthorized("settings", "edit");
 
     const data = {
       provider: formData.get("provider") as SmsProvider,
@@ -17,14 +18,18 @@ export async function createSmsGateway(formData: FormData) {
       senderId: formData.get("senderId") as string,
       apiUrl: formData.get("apiUrl") as string,
       status: formData.get("status") as "ACTIVE" | "INACTIVE",
-      config: formData.get("config") ? JSON.parse(formData.get("config") as string) : undefined,
+      config: (() => {
+        const raw = formData.get("config") as string | null;
+        if (!raw) return undefined;
+        try { return JSON.parse(raw); } catch { return undefined; }
+      })(),
     };
 
     // Validate input
     const validated = smsGatewaySchema.parse(data);
 
     // Create gateway
-    await smsService.create(tenantId, validated);
+    await smsService.create(tenantId, validated as Parameters<typeof smsService.create>[1]);
 
     revalidatePath("/settings/sms-gateway");
     return { success: true, message: "SMS gateway created successfully" };
@@ -32,14 +37,14 @@ export async function createSmsGateway(formData: FormData) {
     console.error("[Create SMS Gateway]", error);
     return {
       success: false,
-      message: error instanceof Error ? error.message : "Failed to create SMS gateway",
+      message: safeErrorMessage(error, "Failed to create SMS gateway"),
     };
   }
 }
 
 export async function updateSmsGateway(id: string, formData: FormData) {
   try {
-    const tenantId = await requireTenantId();
+    const { tenantId } = await requireAuthorized("settings", "edit");
 
     const data = {
       name: formData.get("name") as string,
@@ -47,14 +52,18 @@ export async function updateSmsGateway(id: string, formData: FormData) {
       senderId: formData.get("senderId") as string,
       apiUrl: formData.get("apiUrl") as string,
       status: formData.get("status") as "ACTIVE" | "INACTIVE",
-      config: formData.get("config") ? JSON.parse(formData.get("config") as string) : undefined,
+      config: (() => {
+        const raw = formData.get("config") as string | null;
+        if (!raw) return undefined;
+        try { return JSON.parse(raw); } catch { return undefined; }
+      })(),
     };
 
     // Validate input (partial schema)
     const validated = smsGatewaySchema.partial().parse(data);
 
     // Update gateway
-    await smsService.update(id, tenantId, validated);
+    await smsService.update(id, tenantId, validated as Parameters<typeof smsService.update>[2]);
 
     revalidatePath("/settings/sms-gateway");
     return { success: true, message: "SMS gateway updated successfully" };
@@ -62,14 +71,14 @@ export async function updateSmsGateway(id: string, formData: FormData) {
     console.error("[Update SMS Gateway]", error);
     return {
       success: false,
-      message: error instanceof Error ? error.message : "Failed to update SMS gateway",
+      message: safeErrorMessage(error, "Failed to update SMS gateway"),
     };
   }
 }
 
 export async function deleteSmsGateway(id: string) {
   try {
-    const tenantId = await requireTenantId();
+    const { tenantId } = await requireAuthorized("settings", "edit");
 
     await smsService.delete(id, tenantId);
 
@@ -79,14 +88,14 @@ export async function deleteSmsGateway(id: string) {
     console.error("[Delete SMS Gateway]", error);
     return {
       success: false,
-      message: error instanceof Error ? error.message : "Failed to delete SMS gateway",
+      message: safeErrorMessage(error, "Failed to delete SMS gateway"),
     };
   }
 }
 
 export async function toggleSmsGatewayStatus(id: string, status: "ACTIVE" | "INACTIVE") {
   try {
-    const tenantId = await requireTenantId();
+    const { tenantId } = await requireAuthorized("settings", "edit");
 
     await smsService.toggleStatus(id, tenantId, status);
 
@@ -96,14 +105,14 @@ export async function toggleSmsGatewayStatus(id: string, status: "ACTIVE" | "INA
     console.error("[Toggle SMS Gateway Status]", error);
     return {
       success: false,
-      message: error instanceof Error ? error.message : "Failed to toggle SMS gateway status",
+      message: safeErrorMessage(error, "Failed to toggle SMS gateway status"),
     };
   }
 }
 
 export async function testSmsGateway(id: string, phone: string, message: string) {
   try {
-    const tenantId = await requireTenantId();
+    const { tenantId } = await requireAuthorized("settings", "view");
 
     // Validate input
     const validated = testSmsSchema.parse({ phone, message });
@@ -127,14 +136,14 @@ export async function testSmsGateway(id: string, phone: string, message: string)
     console.error("[Test SMS Gateway]", error);
     return {
       success: false,
-      message: error instanceof Error ? error.message : "Failed to test SMS gateway",
+      message: safeErrorMessage(error, "Failed to test SMS gateway"),
     };
   }
 }
 
 export async function getGatewayBalance() {
   try {
-    const tenantId = await requireTenantId();
+    const { tenantId } = await requireAuthorized("settings", "view");
 
     const balance = await smsService.getBalance(tenantId);
 
@@ -147,7 +156,7 @@ export async function getGatewayBalance() {
     console.error("[Get Gateway Balance]", error);
     return {
       success: false,
-      message: error instanceof Error ? error.message : "Failed to get balance",
+      message: safeErrorMessage(error, "Failed to get balance"),
     };
   }
 }

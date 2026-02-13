@@ -3,7 +3,7 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { locationSchema, type CreateLocationInput } from "@/lib/validations/location.schema";
-import type { Location } from "@prisma/client";
+import type { Location } from "@/generated/prisma";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,7 +21,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Loader2 } from "lucide-react";
-import { useTransition } from "react";
+import { useTransition, useEffect } from "react";
 import { createLocation, updateLocation } from "./actions";
 import { toast } from "sonner";
 
@@ -44,9 +44,8 @@ export function LocationForm({
 }: LocationFormProps) {
   const [isPending, startTransition] = useTransition();
 
-  const form = useForm<CreateLocationInput>({
-    resolver: zodResolver(locationSchema),
-    defaultValues: location
+  const getFormValues = () =>
+    location
       ? {
           name: location.name,
           type: location.type,
@@ -56,8 +55,16 @@ export function LocationForm({
           name: "",
           type: (defaultType as CreateLocationInput["type"]) ?? "AREA",
           parentId: defaultParentId ?? null,
-        },
+        };
+
+  const form = useForm<CreateLocationInput>({
+    resolver: zodResolver(locationSchema),
+    defaultValues: getFormValues(),
   });
+
+  useEffect(() => {
+    form.reset(getFormValues());
+  }, [location?.id, defaultParentId, defaultType]);
 
   // Filter parent options based on hierarchy
   const watchType = form.watch("type");

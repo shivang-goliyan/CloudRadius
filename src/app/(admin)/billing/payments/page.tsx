@@ -2,6 +2,7 @@ import { requireTenantId } from "@/lib/session";
 import { paymentService } from "@/services/payment.service";
 import { subscriberService } from "@/services/subscriber.service";
 import { PaymentTable } from "./payment-table";
+import { serialize } from "@/lib/types";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   CreditCard,
@@ -83,7 +84,7 @@ export default async function PaymentsPage() {
         ))}
       </div>
 
-      <PaymentTable data={result.data} subscribers={subscribers} />
+      <PaymentTable data={serialize(result.data)} subscribers={serialize(subscribers)} />
     </div>
   );
 }

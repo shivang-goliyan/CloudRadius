@@ -1,13 +1,53 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
 import { registerSchema } from "@/lib/validations/auth.schema";
 
 type TransactionClient = Omit<PrismaClient, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">;
 
+// Rate limiter for registration: max 3 per hour per IP
+const registerAttempts = new Map<
+  string,
+  { count: number; firstAttempt: number }
+>();
+const REG_MAX = 3;
+const REG_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+
+function checkRegisterRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const record = registerAttempts.get(ip);
+  if (!record) return true;
+  if (now - record.firstAttempt > REG_WINDOW_MS) {
+    registerAttempts.delete(ip);
+    return true;
+  }
+  return record.count < REG_MAX;
+}
+
+function recordRegisterAttempt(ip: string): void {
+  const now = Date.now();
+  const record = registerAttempts.get(ip);
+  if (!record || now - record.firstAttempt > REG_WINDOW_MS) {
+    registerAttempts.set(ip, { count: 1, firstAttempt: now });
+  } else {
+    record.count++;
+  }
+}
+
 export async function POST(request: Request) {
   try {
+    const ip =
+      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+      "unknown";
+
+    if (!checkRegisterRateLimit(ip)) {
+      return NextResponse.json(
+        { error: "Too many registration attempts. Try again later." },
+        { status: 429 }
+      );
+    }
+
     const body = await request.json();
     const validated = registerSchema.safeParse(body);
 
@@ -80,6 +120,8 @@ export async function POST(request: Request) {
 
       return { tenant, user };
     });
+
+    recordRegisterAttempt(ip);
 
     return NextResponse.json(
       {

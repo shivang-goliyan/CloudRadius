@@ -3,7 +3,8 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { invoiceSchema, type CreateInvoiceInput } from "@/lib/validations/invoice.schema";
-import type { Subscriber, Plan } from "@prisma/client";
+import type { Subscriber, Plan } from "@/generated/prisma";
+import type { Serialized } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,11 +26,13 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 interface InvoiceFormProps {
-  subscribers: Subscriber[];
-  plans: Plan[];
+  subscribers: Serialized<Subscriber>[];
+  plans: Serialized<Plan>[];
+  taxRate?: number;
+  taxLabel?: string;
 }
 
-export function InvoiceForm({ subscribers, plans }: InvoiceFormProps) {
+export function InvoiceForm({ subscribers, plans, taxRate = 0, taxLabel = "Tax" }: InvoiceFormProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [selectedSubscriberId, setSelectedSubscriberId] = useState<string>("");
@@ -43,12 +46,19 @@ export function InvoiceForm({ subscribers, plans }: InvoiceFormProps) {
       amount: 0,
       tax: 0,
       discount: 0,
-      invoiceDate: new Date().toISOString().split("T")[0],
-      dueDate: "",
+      invoiceDate: new Date(),
+      dueDate: new Date(),
       description: "",
       notes: "",
     },
   });
+
+  const autoCalcTax = (amount: number) => {
+    if (taxRate > 0) {
+      const tax = Math.round((amount * taxRate) / 100 * 100) / 100;
+      form.setValue("tax", tax);
+    }
+  };
 
   // Auto-fill plan when subscriber is selected
   useEffect(() => {
@@ -58,8 +68,10 @@ export function InvoiceForm({ subscribers, plans }: InvoiceFormProps) {
         form.setValue("planId", subscriber.planId);
         const plan = plans.find((p) => p.id === subscriber.planId);
         if (plan) {
-          form.setValue("amount", Number(plan.price));
+          const amount = Number(plan.price);
+          form.setValue("amount", amount);
           form.setValue("description", `${plan.name} - ${plan.validityDays || 30} days`);
+          autoCalcTax(amount);
         }
       }
     }
@@ -69,6 +81,14 @@ export function InvoiceForm({ subscribers, plans }: InvoiceFormProps) {
   const watchAmount = form.watch("amount");
   const watchTax = form.watch("tax");
   const watchDiscount = form.watch("discount");
+
+  // Auto-recalculate tax when amount changes
+  useEffect(() => {
+    const amount = Number(watchAmount) || 0;
+    if (taxRate > 0 && amount > 0) {
+      autoCalcTax(amount);
+    }
+  }, [watchAmount]);
 
   useEffect(() => {
     const amount = Number(watchAmount) || 0;
@@ -149,8 +169,10 @@ export function InvoiceForm({ subscribers, plans }: InvoiceFormProps) {
                   form.setValue("planId", value);
                   const plan = plans.find((p) => p.id === value);
                   if (plan) {
-                    form.setValue("amount", Number(plan.price));
+                    const amount = Number(plan.price);
+                    form.setValue("amount", amount);
                     form.setValue("description", `${plan.name} - ${plan.validityDays || 30} days`);
+                    autoCalcTax(amount);
                   }
                 }}
               >
@@ -190,7 +212,7 @@ export function InvoiceForm({ subscribers, plans }: InvoiceFormProps) {
               </div>
 
               <div className="space-y-2">
-                <Label>Tax</Label>
+                <Label>{taxLabel}{taxRate > 0 ? ` (${taxRate}%)` : ""}</Label>
                 <Input
                   type="number"
                   step="0.01"

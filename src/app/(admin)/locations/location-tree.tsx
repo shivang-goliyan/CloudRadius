@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import type { Location } from "@prisma/client";
+import type { Location } from "@/generated/prisma";
 import { LocationForm } from "./location-form";
 import { deleteLocation } from "./actions";
 import { Button } from "@/components/ui/button";

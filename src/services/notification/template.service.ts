@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import type { NotificationType, NotificationChannel } from "@prisma/client";
+import type { NotificationType, NotificationChannel } from "@/generated/prisma";
 
 export interface TemplateVariables {
   name?: string;
@@ -51,17 +51,37 @@ export const templateService = {
   },
 
   /**
+   * Escape HTML special characters to prevent XSS in email templates
+   */
+  escapeHtml(str: string): string {
+    const map: Record<string, string> = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    };
+    return str.replace(/[&<>"']/g, (c) => map[c] || c);
+  },
+
+  /**
    * Render template with variable substitution
    * Replaces {variableName} with actual values
+   * HTML-escapes all variable values to prevent XSS injection
    */
-  renderTemplate(template: string, variables: TemplateVariables): string {
+  renderTemplate(
+    template: string,
+    variables: TemplateVariables,
+    options?: { escapeHtml?: boolean }
+  ): string {
     let rendered = template;
+    const shouldEscape = options?.escapeHtml !== false;
 
-    // Replace all {variable} patterns with actual values
     for (const [key, value] of Object.entries(variables)) {
       if (value !== undefined && value !== null) {
         const pattern = new RegExp(`\\{${key}\\}`, "g");
-        rendered = rendered.replace(pattern, value);
+        const safeValue = shouldEscape ? this.escapeHtml(value) : value;
+        rendered = rendered.replace(pattern, safeValue);
       }
     }
 

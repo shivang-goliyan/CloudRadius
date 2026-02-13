@@ -3,13 +3,13 @@
 import { type ColumnDef } from "@tanstack/react-table";
 import { SortableHeader } from "@/components/tables/sortable-header";
 import { Badge } from "@/components/ui/badge";
-import type { RadAcct } from "@prisma/client";
+import type { RadAcct } from "@/generated/prisma";
 import { formatDistanceStrict } from "date-fns";
 
 export const columns: ColumnDef<RadAcct>[] = [
   {
     accessorKey: "username",
-    header: ({ column }) => <SortableHeader column={column} label="Username" />,
+    header: ({ column }) => <SortableHeader column={column} title="Username" />,
     cell: ({ row }) => {
       const username = row.original.username;
       // Remove tenant prefix for display
@@ -19,7 +19,7 @@ export const columns: ColumnDef<RadAcct>[] = [
   },
   {
     accessorKey: "acctstarttime",
-    header: ({ column }) => <SortableHeader column={column} label="Start Time" />,
+    header: ({ column }) => <SortableHeader column={column} title="Start Time" />,
     cell: ({ row }) => {
       const date = row.original.acctstarttime;
       return date ? (
@@ -61,8 +61,9 @@ export const columns: ColumnDef<RadAcct>[] = [
     id: "duration",
     header: "Duration",
     cell: ({ row }) => {
-      const sessionTime = row.original.acctsessiontime;
-      if (!sessionTime) return <span className="text-muted-foreground text-sm">-</span>;
+      const sessionTimeRaw = row.original.acctsessiontime;
+      if (!sessionTimeRaw) return <span className="text-muted-foreground text-sm">-</span>;
+      const sessionTime = Number(sessionTimeRaw);
 
       const hours = Math.floor(sessionTime / 3600);
       const minutes = Math.floor((sessionTime % 3600) / 60);

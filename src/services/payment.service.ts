@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { billingService } from "./billing.service";
-import type { Prisma, PaymentMethod, PaymentStatus } from "@prisma/client";
+import type { Prisma, PaymentMethod, PaymentStatus } from "@/generated/prisma";
 
 export interface PaymentListParams {
   tenantId: string;

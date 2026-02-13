@@ -111,8 +111,13 @@ export function DataTable<TData, TValue>({
     const newFilters = { ...activeFilters };
     if (value === "all") {
       delete newFilters[key];
+      setColumnFilters((prev) => prev.filter((f) => f.id !== key));
     } else {
       newFilters[key] = value;
+      setColumnFilters((prev) => [
+        ...prev.filter((f) => f.id !== key),
+        { id: key, value },
+      ]);
     }
     setActiveFilters(newFilters);
     onFilterChange?.(newFilters);
@@ -168,7 +173,7 @@ export function DataTable<TData, TValue>({
       </div>
 
       {/* Table */}
-      <div className="rounded-md border">
+      <div className="rounded-md border overflow-x-auto">
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (

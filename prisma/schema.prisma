@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
 }
 
 datasource db {
@@ -180,12 +181,63 @@ enum SmsProvider {
   MSG91
   TEXTLOCAL
   TWILIO
+  WHATSAPP
   CUSTOM
 }
 
 enum GatewayStatus {
   ACTIVE
   INACTIVE
+}
+
+// ─── Phase 5 Enums ──────────────────────────────────────────
+
+enum VoucherStatus {
+  GENERATED
+  SOLD
+  REDEEMED
+  EXPIRED
+}
+
+enum TicketStatus {
+  OPEN
+  ASSIGNED
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum TicketCategory {
+  CONNECTIVITY
+  BILLING
+  SPEED
+  INSTALLATION
+  OTHER
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  SITE_SURVEY
+  INSTALLATION_SCHEDULED
+  CONVERTED
+  LOST
+}
+
+enum LeadSource {
+  WALK_IN
+  REFERRAL
+  WEBSITE
+  PHONE
+  SOCIAL_MEDIA
+  OTHER
 }
 
 // ─── Platform-Level Models ──────────────────────────────────
@@ -217,6 +269,12 @@ model Tenant {
   smsGateways           SmsGateway[]
   emailConfig           EmailConfig?
   otps                  Otp[]
+  voucherBatches        VoucherBatch[]
+  vouchers              Voucher[]
+  tickets               Ticket[]
+  ticketComments        TicketComment[]
+  leads                 Lead[]
+  captivePortalConfig   CaptivePortalConfig?
 
   @@map("tenants")
 }
@@ -230,18 +288,23 @@ model User {
   passwordHash  String     @map("password_hash")
   role          UserRole   @default(STAFF)
   status        UserStatus @default(ACTIVE)
+  locationId    String?    @map("location_id")
   emailVerified DateTime?  @map("email_verified")
   image         String?
   lastLoginAt   DateTime?  @map("last_login_at")
   createdAt     DateTime   @default(now()) @map("created_at")
   updatedAt     DateTime   @updatedAt @map("updated_at")
 
-  tenant   Tenant?   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  sessions Session[]
-  accounts Account[]
+  tenant          Tenant?         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  location        Location?       @relation("UserLocation", fields: [locationId], references: [id])
+  sessions        Session[]
+  accounts        Account[]
+  assignedTickets Ticket[]        @relation("TicketAssignee")
+  ticketComments  TicketComment[]
 
   @@index([tenantId, email])
   @@index([tenantId, role])
+  @@index([tenantId, locationId])
   @@map("users")
 }
 
@@ -329,9 +392,10 @@ model Plan {
   createdAt DateTime   @default(now()) @map("created_at")
   updatedAt DateTime   @updatedAt @map("updated_at")
 
-  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  subscribers Subscriber[]
-  invoices    Invoice[]
+  tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  subscribers    Subscriber[]
+  invoices       Invoice[]
+  voucherBatches VoucherBatch[]
 
   @@index([tenantId, status])
   @@index([tenantId, name])
@@ -379,8 +443,10 @@ model Location {
   tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   parent     Location?   @relation("LocationHierarchy", fields: [parentId], references: [id])
   children   Location[]  @relation("LocationHierarchy")
-  nasDevices NasDevice[]
+  nasDevices  NasDevice[]
   subscribers Subscriber[]
+  leads       Lead[]
+  assignedUsers User[]     @relation("UserLocation")
 
   @@index([tenantId, type])
   @@index([tenantId, parentId])
@@ -422,6 +488,7 @@ model Subscriber {
   status            SubscriberStatus @default(ACTIVE)
   notes             String?
   balance           Decimal          @default(0) @db.Decimal(10, 2)
+  autoRenewal       Boolean          @default(false) @map("auto_renewal")
 
   createdAt         DateTime         @default(now()) @map("created_at")
   updatedAt         DateTime         @updatedAt @map("updated_at")
@@ -434,6 +501,8 @@ model Subscriber {
   invoices         Invoice[]
   payments         Payment[]
   notificationLogs NotificationLog[]
+  tickets          Ticket[]
+  vouchers         Voucher[]       @relation("VoucherRedeemedBy")
 
   @@unique([tenantId, username])
   @@index([tenantId, status])
@@ -469,6 +538,7 @@ model RadReply {
   value     String
   createdAt DateTime @default(now()) @map("created_at")
 
+  @@unique([username, attribute])
   @@index([username])
   @@map("radreply")
 }
@@ -512,21 +582,35 @@ model RadUserGroup {
 }
 
 model RadAcct {
-  id                  String    @id @default(uuid()) @map("radacctid")
+  id                  BigInt    @id @default(autoincrement()) @map("radacctid")
   acctsessionid       String    @map("acctsessionid")
   acctuniqueid        String    @unique @map("acctuniqueid")
   username            String
-  nasipaddress        String    @map("nasipaddress")
+  realm               String?
+  nasipaddress        String    @map("nasipaddress") @db.Inet
   nasportid           String?   @map("nasportid")
-  acctstarttime       DateTime? @map("acctstarttime")
-  acctupdatetime      DateTime? @map("acctupdatetime")
-  acctstoptime        DateTime? @map("acctstoptime")
-  acctsessiontime     Int?      @map("acctsessiontime")
+  nasporttype         String?   @map("nasporttype")
+  acctstarttime       DateTime? @map("acctstarttime") @db.Timestamptz()
+  acctupdatetime      DateTime? @map("acctupdatetime") @db.Timestamptz()
+  acctstoptime        DateTime? @map("acctstoptime") @db.Timestamptz()
+  acctinterval        BigInt?   @map("acctinterval")
+  acctsessiontime     BigInt?   @map("acctsessiontime")
+  acctauthentic       String?   @map("acctauthentic")
+  connectinfoStart    String?   @map("connectinfo_start")
+  connectinfoStop     String?   @map("connectinfo_stop")
   acctinputoctets     BigInt?   @map("acctinputoctets")
   acctoutputoctets    BigInt?   @map("acctoutputoctets")
+  calledstationid     String?   @map("calledstationid")
   callingstationid    String?   @map("callingstationid") // MAC address
-  framedipaddress     String?   @map("framedipaddress")
   acctterminatecause  String?   @map("acctterminatecause")
+  servicetype         String?   @map("servicetype")
+  framedprotocol      String?   @map("framedprotocol")
+  framedipaddress     String?   @map("framedipaddress") @db.Inet
+  framedipv6address   String?   @map("framedipv6address") @db.Inet
+  framedipv6prefix    String?   @map("framedipv6prefix") @db.Inet
+  framedinterfaceid   String?   @map("framedinterfaceid")
+  delegatedipv6prefix String?   @map("delegatedipv6prefix") @db.Inet
+  class               String?
 
   @@index([username])
   @@index([nasipaddress])
@@ -541,12 +625,27 @@ model RadNas {
   nasname     String   @unique // NAS IP address
   shortname   String
   type        String   @default("other")
+  ports       Int?     // NAS ports
   secret      String   // RADIUS shared secret
+  server      String?  // Virtual server (FreeRADIUS)
+  community   String?  // SNMP community
   description String?
   createdAt   DateTime @default(now()) @map("created_at")
 
   @@index([nasname])
   @@map("nas")
+}
+
+model RadPostAuth {
+  id       BigInt   @id @default(autoincrement())
+  username String   @db.VarChar(64)
+  pass     String?  @db.VarChar(64)
+  reply    String?  @db.VarChar(32)
+  authdate DateTime @default(now()) @db.Timestamptz()
+
+  @@index([username])
+  @@index([authdate])
+  @@map("radpostauth")
 }
 
 // ─── Phase 3: Billing & Payments ─────────────────────────────────
@@ -762,4 +861,150 @@ model Otp {
   @@index([tenantId, phone, purpose])
   @@index([code, expiresAt])
   @@map("otps")
+}
+
+// ─── Phase 5: Vouchers ──────────────────────────────────────
+
+model VoucherBatch {
+  id            String   @id @default(uuid())
+  tenantId      String   @map("tenant_id")
+  planId        String   @map("plan_id")
+  batchNumber   String   @map("batch_number") // "BATCH-001"
+  prefix        String   @default("") // Voucher code prefix
+  quantity      Int
+  codeLength    Int      @default(8) @map("code_length")
+  validityDays  Int      @map("validity_days") // Each voucher valid for N days from redemption
+  notes         String?  @db.Text
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  plan     Plan      @relation(fields: [planId], references: [id])
+  vouchers Voucher[]
+
+  @@unique([tenantId, batchNumber])
+  @@index([tenantId])
+  @@map("voucher_batches")
+}
+
+model Voucher {
+  id             String        @id @default(uuid())
+  tenantId       String        @map("tenant_id")
+  batchId        String        @map("batch_id")
+  code           String        // Unique voucher code (e.g., "DEMO-A1B2C3D4")
+  serialNumber   Int           @map("serial_number") // Sequential within batch
+  status         VoucherStatus @default(GENERATED)
+  soldTo         String?       @map("sold_to") // Dealer/retailer name
+  soldAt         DateTime?     @map("sold_at")
+  redeemedById   String?       @map("redeemed_by_id") // Subscriber who redeemed
+  redeemedAt     DateTime?     @map("redeemed_at")
+  expiresAt      DateTime?     @map("expires_at") // Set on redemption: redeemedAt + validityDays
+  createdAt      DateTime      @default(now()) @map("created_at")
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  batch      VoucherBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  redeemedBy Subscriber? @relation("VoucherRedeemedBy", fields: [redeemedById], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, code])
+  @@index([tenantId, status])
+  @@index([tenantId, batchId])
+  @@index([code])
+  @@map("vouchers")
+}
+
+// ─── Phase 5: CRM & Helpdesk ────────────────────────────────
+
+model Ticket {
+  id            String         @id @default(uuid())
+  tenantId      String         @map("tenant_id")
+  subscriberId  String?        @map("subscriber_id")
+  assignedToId  String?        @map("assigned_to_id")
+  ticketNumber  String         @map("ticket_number") // "TKT-001"
+  subject       String
+  description   String         @db.Text
+  category      TicketCategory @default(OTHER)
+  priority      TicketPriority @default(MEDIUM)
+  status        TicketStatus   @default(OPEN)
+  resolvedAt    DateTime?      @map("resolved_at")
+  closedAt      DateTime?      @map("closed_at")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+
+  tenant     Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  subscriber Subscriber?     @relation(fields: [subscriberId], references: [id], onDelete: SetNull)
+  assignedTo User?           @relation("TicketAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  comments   TicketComment[]
+
+  @@unique([tenantId, ticketNumber])
+  @@index([tenantId, status])
+  @@index([tenantId, priority])
+  @@index([tenantId, subscriberId])
+  @@index([tenantId, assignedToId])
+  @@map("tickets")
+}
+
+model TicketComment {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  ticketId    String   @map("ticket_id")
+  userId      String   @map("user_id") // Staff who wrote the comment
+  message     String   @db.Text
+  isInternal  Boolean  @default(false) @map("is_internal") // Internal notes not visible to subscriber
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
+  @@index([tenantId, ticketId])
+  @@map("ticket_comments")
+}
+
+// ─── Phase 5: Leads ─────────────────────────────────────────
+
+model Lead {
+  id            String     @id @default(uuid())
+  tenantId      String     @map("tenant_id")
+  name          String
+  phone         String
+  email         String?
+  address       String?
+  locationId    String?    @map("location_id")
+  source        LeadSource @default(WALK_IN)
+  status        LeadStatus @default(NEW)
+  notes         String?    @db.Text
+  convertedToId String?    @map("converted_to_id") // Subscriber ID after conversion
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
+
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  location  Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, status])
+  @@index([tenantId, phone])
+  @@map("leads")
+}
+
+// ─── Phase 5: Captive Portal ────────────────────────────────
+
+model CaptivePortalConfig {
+  id                String   @id @default(uuid())
+  tenantId          String   @unique @map("tenant_id")
+  isEnabled         Boolean  @default(false) @map("is_enabled")
+  logoUrl           String?  @map("logo_url")
+  backgroundUrl     String?  @map("background_url")
+  primaryColor      String   @default("#2563eb") @map("primary_color")
+  welcomeTitle      String   @default("Welcome to WiFi") @map("welcome_title")
+  welcomeMessage    String?  @map("welcome_message") @db.Text
+  termsOfService    String?  @map("terms_of_service") @db.Text
+  redirectUrl       String?  @map("redirect_url")
+  enableOtpLogin    Boolean  @default(true) @map("enable_otp_login")
+  enableVoucherLogin Boolean @default(true) @map("enable_voucher_login")
+  enableUserPassLogin Boolean @default(true) @map("enable_user_pass_login")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("captive_portal_configs")
 }

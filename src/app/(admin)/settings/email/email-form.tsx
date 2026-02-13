@@ -30,7 +30,7 @@ import {
 import { toast } from "sonner";
 import { saveEmailConfig, deleteEmailConfig, testEmailConnection, sendTestEmail } from "./actions";
 import { TestTube, Mail, Trash2 } from "lucide-react";
-import type { EmailConfig } from "@prisma/client";
+import type { EmailConfig } from "@/generated/prisma";
 
 interface EmailConfigFormProps {
   config: EmailConfig | null;

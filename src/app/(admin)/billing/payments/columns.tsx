@@ -1,7 +1,8 @@
 "use client";
 
 import type { ColumnDef } from "@tanstack/react-table";
-import type { Payment, Subscriber, Invoice } from "@prisma/client";
+import type { Payment, Subscriber, Invoice } from "@/generated/prisma";
+import type { Serialized } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,10 +16,10 @@ import { SortableHeader } from "@/components/tables/sortable-header";
 import Link from "next/link";
 import { format } from "date-fns";
 
-type PaymentWithRelations = Payment & {
+type PaymentWithRelations = Serialized<Payment & {
   subscriber: Pick<Subscriber, "id" | "name" | "phone">;
   invoice: Pick<Invoice, "id" | "invoiceNumber"> | null;
-};
+}>;
 
 const statusVariant: Record<
   string,
@@ -60,7 +61,8 @@ export function getPaymentColumns({
       ),
     },
     {
-      accessorKey: "subscriber",
+      id: "subscriber",
+      accessorFn: (row) => `${row.subscriber.name} ${row.subscriber.phone}`,
       header: "Subscriber",
       cell: ({ row }) => (
         <div>
@@ -77,7 +79,8 @@ export function getPaymentColumns({
       ),
     },
     {
-      accessorKey: "invoice",
+      id: "invoice",
+      accessorFn: (row) => row.invoice?.invoiceNumber ?? "",
       header: "Invoice",
       cell: ({ row }) =>
         row.original.invoice ? (

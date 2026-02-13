@@ -1,13 +1,14 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireTenantId } from "@/lib/session";
+import { requireAuthorized } from "@/lib/session";
 import { emailService } from "@/services/email.service";
 import { emailConfigSchema, testEmailSchema } from "@/lib/validations/email-config.schema";
+import { safeErrorMessage } from "@/lib/types";
 
 export async function saveEmailConfig(formData: FormData) {
   try {
-    const tenantId = await requireTenantId();
+    const { tenantId } = await requireAuthorized("settings", "edit");
 
     const data = {
       smtpHost: formData.get("smtpHost") as string,
@@ -32,14 +33,14 @@ export async function saveEmailConfig(formData: FormData) {
     console.error("[Save Email Config]", error);
     return {
       success: false,
-      message: error instanceof Error ? error.message : "Failed to save email configuration",
+      message: safeErrorMessage(error, "Failed to save email configuration"),
     };
   }
 }
 
 export async function deleteEmailConfig() {
   try {
-    const tenantId = await requireTenantId();
+    const { tenantId } = await requireAuthorized("settings", "edit");
 
     await emailService.deleteConfig(tenantId);
 
@@ -49,14 +50,14 @@ export async function deleteEmailConfig() {
     console.error("[Delete Email Config]", error);
     return {
       success: false,
-      message: error instanceof Error ? error.message : "Failed to delete email configuration",
+      message: safeErrorMessage(error, "Failed to delete email configuration"),
     };
   }
 }
 
 export async function testEmailConnection(formData: FormData) {
   try {
-    const tenantId = await requireTenantId();
+    const { tenantId } = await requireAuthorized("settings", "view");
 
     const data = {
       smtpHost: formData.get("smtpHost") as string,
@@ -93,14 +94,14 @@ export async function testEmailConnection(formData: FormData) {
     console.error("[Test Email Connection]", error);
     return {
       success: false,
-      message: error instanceof Error ? error.message : "Failed to test email connection",
+      message: safeErrorMessage(error, "Failed to test email connection"),
     };
   }
 }
 
 export async function sendTestEmail(to: string, subject: string, body: string) {
   try {
-    const tenantId = await requireTenantId();
+    const { tenantId } = await requireAuthorized("settings", "view");
 
     // Validate input
     const validated = testEmailSchema.parse({ to, subject, body });
@@ -124,7 +125,7 @@ export async function sendTestEmail(to: string, subject: string, body: string) {
     console.error("[Send Test Email]", error);
     return {
       success: false,
-      message: error instanceof Error ? error.message : "Failed to send test email",
+      message: safeErrorMessage(error, "Failed to send test email"),
     };
   }
 }

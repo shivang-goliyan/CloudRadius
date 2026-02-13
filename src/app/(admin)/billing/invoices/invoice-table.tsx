@@ -1,29 +1,32 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import type { Invoice, Subscriber, Plan } from "@prisma/client";
+import type { Invoice, Subscriber, Plan } from "@/generated/prisma";
+import type { Serialized } from "@/lib/types";
 import { DataTable } from "@/components/tables/data-table";
 import { getInvoiceColumns } from "./columns";
 import { cancelInvoice, downloadInvoicePdf } from "./actions";
+import { RecordPaymentDialog } from "./record-payment-dialog";
 import { Button } from "@/components/ui/button";
 import { Plus, Download } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
 
-type InvoiceWithRelations = Invoice & {
+type InvoiceWithRelations = Serialized<Invoice & {
   subscriber: Pick<Subscriber, "id" | "name" | "phone" | "username">;
   plan: Pick<Plan, "id" | "name"> | null;
   _count: { payments: number };
-};
+}>;
+
+type SubscriberBasic = Serialized<Pick<Subscriber, "id" | "name" | "phone" | "username" | "email" | "planId" | "status">>;
 
 interface InvoiceTableProps {
   data: InvoiceWithRelations[];
+  subscribers: SubscriberBasic[];
 }
 
-export function InvoiceTable({ data }: InvoiceTableProps) {
-  const [selectedInvoice, setSelectedInvoice] = useState<InvoiceWithRelations | null>(
-    null
-  );
+export function InvoiceTable({ data, subscribers }: InvoiceTableProps) {
+  const [selectedInvoice, setSelectedInvoice] = useState<InvoiceWithRelations | null>(null);
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
   const [, startTransition] = useTransition();
 
@@ -34,7 +37,7 @@ export function InvoiceTable({ data }: InvoiceTableProps) {
 
   const handleCancel = (id: string) => {
     const reason = prompt("Enter cancellation reason (optional):");
-    if (reason === null) return; // User clicked cancel
+    if (reason === null) return;
 
     startTransition(async () => {
       const result = await cancelInvoice(id, reason || undefined);
@@ -50,7 +53,6 @@ export function InvoiceTable({ data }: InvoiceTableProps) {
     startTransition(async () => {
       const result = await downloadInvoicePdf(id);
       if (result.success && result.data) {
-        // Open PDF in new tab
         window.open(result.data, "_blank");
       } else {
         toast.error(result.error ?? "Failed to download PDF");
@@ -99,19 +101,14 @@ export function InvoiceTable({ data }: InvoiceTableProps) {
         }
       />
 
-      {/* Payment Dialog - Will be implemented in Part B */}
-      {showPaymentDialog && selectedInvoice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="rounded-lg bg-background p-6 shadow-lg">
-            <p className="text-sm text-muted-foreground">
-              Payment dialog will be implemented in Part B
-            </p>
-            <Button onClick={() => setShowPaymentDialog(false)} className="mt-4">
-              Close
-            </Button>
-          </div>
-        </div>
-      )}
+      <RecordPaymentDialog
+        open={showPaymentDialog}
+        onOpenChange={setShowPaymentDialog}
+        subscribers={subscribers}
+        preSelectedSubscriberId={selectedInvoice?.subscriber.id}
+        preSelectedInvoiceId={selectedInvoice?.id}
+        preSelectedAmount={selectedInvoice ? Number(selectedInvoice.balanceDue) : undefined}
+      />
     </>
   );
 }

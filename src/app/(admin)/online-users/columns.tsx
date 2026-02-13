@@ -3,13 +3,13 @@
 import { type ColumnDef } from "@tanstack/react-table";
 import { SortableHeader } from "@/components/tables/sortable-header";
 import { Badge } from "@/components/ui/badge";
-import type { RadAcct } from "@prisma/client";
+import type { RadAcct } from "@/generated/prisma";
 import { formatDistanceToNow } from "date-fns";
 
 export const columns: ColumnDef<RadAcct>[] = [
   {
     accessorKey: "username",
-    header: ({ column }) => <SortableHeader column={column} label="Username" />,
+    header: ({ column }) => <SortableHeader column={column} title="Username" />,
     cell: ({ row }) => {
       const username = row.original.username;
       // Remove tenant prefix for display
@@ -46,7 +46,7 @@ export const columns: ColumnDef<RadAcct>[] = [
   },
   {
     accessorKey: "acctstarttime",
-    header: ({ column }) => <SortableHeader column={column} label="Session Start" />,
+    header: ({ column }) => <SortableHeader column={column} title="Session Start" />,
     cell: ({ row }) => {
       const date = row.original.acctstarttime;
       return date ? (

@@ -1,7 +1,8 @@
 "use client";
 
 import type { ColumnDef } from "@tanstack/react-table";
-import type { Invoice, Subscriber, Plan } from "@prisma/client";
+import type { Invoice, Subscriber, Plan } from "@/generated/prisma";
+import type { Serialized } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,11 +24,11 @@ import { SortableHeader } from "@/components/tables/sortable-header";
 import Link from "next/link";
 import { format } from "date-fns";
 
-type InvoiceWithRelations = Invoice & {
+type InvoiceWithRelations = Serialized<Invoice & {
   subscriber: Pick<Subscriber, "id" | "name" | "phone" | "username">;
   plan: Pick<Plan, "id" | "name"> | null;
   _count: { payments: number };
-};
+}>;
 
 const statusVariant: Record<
   string,

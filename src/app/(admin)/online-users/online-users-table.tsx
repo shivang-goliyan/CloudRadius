@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { columns } from "./columns";
 import { disconnectUserAction } from "./actions";
 import { toast } from "sonner";
-import type { RadAcct } from "@prisma/client";
+import type { RadAcct } from "@/generated/prisma";
 import { Power, RefreshCw } from "lucide-react";
 import {
   AlertDialog,

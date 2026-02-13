@@ -10,7 +10,7 @@
  *   npx tsx scripts/seed-radius.ts
  */
 
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@/generated/prisma";
 import { radiusService } from "../src/services/radius.service";
 
 const prisma = new PrismaClient();
@@ -78,10 +78,16 @@ async function main() {
       let successCount = 0;
       let errorCount = 0;
 
+      // For existing subscribers, bcrypt hashes can't be reversed.
+      // Use DEFAULT_RADIUS_PASSWORD env var or "subscriber123" as fallback.
+      const defaultPassword = process.env.DEFAULT_RADIUS_PASSWORD || "subscriber123";
+      console.log(`  (Using default RADIUS password: "${defaultPassword}" for existing subscribers)`);
+      console.log(`  Set DEFAULT_RADIUS_PASSWORD env var to override.`);
+
       for (const subscriber of subscribers) {
         try {
-          // Sync auth (username/password)
-          await radiusService.syncSubscriberAuth(tenant.slug, subscriber);
+          // Sync auth with default cleartext password (bcrypt hash can't be reversed)
+          await radiusService.syncSubscriberAuth(tenant.slug, subscriber, defaultPassword);
 
           // Sync plan mapping if subscriber has a plan
           if (subscriber.planId) {

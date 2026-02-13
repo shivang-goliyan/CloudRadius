@@ -3,7 +3,8 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { planSchema, type CreatePlanInput } from "@/lib/validations/plan.schema";
-import type { Plan } from "@prisma/client";
+import type { Plan } from "@/generated/prisma";
+import type { Serialized } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,14 +25,63 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Loader2 } from "lucide-react";
-import { useState, useTransition } from "react";
+import { useState, useEffect, useTransition } from "react";
 import { createPlan, updatePlan } from "./actions";
 import { toast } from "sonner";
 
 interface PlanFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  plan?: Plan | null;
+  plan?: Serialized<Plan> | null;
+}
+
+function getFormValues(plan: Serialized<Plan> | null | undefined): CreatePlanInput {
+  if (plan) {
+    return {
+      name: plan.name,
+      description: plan.description ?? "",
+      downloadSpeed: plan.downloadSpeed,
+      uploadSpeed: plan.uploadSpeed,
+      speedUnit: plan.speedUnit,
+      dataLimit: plan.dataLimit,
+      dataUnit: plan.dataUnit,
+      validityDays: plan.validityDays,
+      validityUnit: plan.validityUnit,
+      price: Number(plan.price),
+      billingType: plan.billingType,
+      planType: plan.planType,
+      fupDownloadSpeed: plan.fupDownloadSpeed,
+      fupUploadSpeed: plan.fupUploadSpeed,
+      fupSpeedUnit: plan.fupSpeedUnit,
+      burstDownloadSpeed: plan.burstDownloadSpeed,
+      burstUploadSpeed: plan.burstUploadSpeed,
+      burstThreshold: plan.burstThreshold,
+      burstTime: plan.burstTime,
+      timeSlotStart: plan.timeSlotStart ?? "",
+      timeSlotEnd: plan.timeSlotEnd ?? "",
+      simultaneousDevices: plan.simultaneousDevices,
+      priority: plan.priority,
+      poolName: plan.poolName ?? "",
+      status: plan.status,
+    };
+  }
+  return {
+    name: "",
+    description: "",
+    downloadSpeed: 10,
+    uploadSpeed: 10,
+    speedUnit: "MBPS",
+    dataLimit: null,
+    dataUnit: "UNLIMITED",
+    validityDays: 30,
+    validityUnit: "DAYS",
+    price: 0,
+    billingType: "PREPAID",
+    planType: "PPPOE",
+    simultaneousDevices: 1,
+    priority: 8,
+    status: "ACTIVE",
+  };
 }
 
 export function PlanForm({ open, onOpenChange, plan }: PlanFormProps) {
@@ -48,52 +98,17 @@ export function PlanForm({ open, onOpenChange, plan }: PlanFormProps) {
 
   const form = useForm<CreatePlanInput>({
     resolver: zodResolver(planSchema),
-    defaultValues: plan
-      ? {
-          name: plan.name,
-          description: plan.description ?? "",
-          downloadSpeed: plan.downloadSpeed,
-          uploadSpeed: plan.uploadSpeed,
-          speedUnit: plan.speedUnit,
-          dataLimit: plan.dataLimit,
-          dataUnit: plan.dataUnit,
-          validityDays: plan.validityDays,
-          validityUnit: plan.validityUnit,
-          price: Number(plan.price),
-          billingType: plan.billingType,
-          planType: plan.planType,
-          fupDownloadSpeed: plan.fupDownloadSpeed,
-          fupUploadSpeed: plan.fupUploadSpeed,
-          fupSpeedUnit: plan.fupSpeedUnit,
-          burstDownloadSpeed: plan.burstDownloadSpeed,
-          burstUploadSpeed: plan.burstUploadSpeed,
-          burstThreshold: plan.burstThreshold,
-          burstTime: plan.burstTime,
-          timeSlotStart: plan.timeSlotStart ?? "",
-          timeSlotEnd: plan.timeSlotEnd ?? "",
-          simultaneousDevices: plan.simultaneousDevices,
-          priority: plan.priority,
-          poolName: plan.poolName ?? "",
-          status: plan.status,
-        }
-      : {
-          name: "",
-          description: "",
-          downloadSpeed: 10,
-          uploadSpeed: 10,
-          speedUnit: "MBPS",
-          dataLimit: null,
-          dataUnit: "UNLIMITED",
-          validityDays: 30,
-          validityUnit: "DAYS",
-          price: 0,
-          billingType: "PREPAID",
-          planType: "PPPOE",
-          simultaneousDevices: 1,
-          priority: 8,
-          status: "ACTIVE",
-        },
+    defaultValues: getFormValues(plan),
   });
+
+  // Reset form when plan changes (edit different plan or switch to create)
+  useEffect(() => {
+    form.reset(getFormValues(plan));
+    setShowFup(!!(plan?.fupDownloadSpeed || plan?.fupUploadSpeed));
+    setShowBurst(!!(plan?.burstDownloadSpeed || plan?.burstUploadSpeed));
+    setShowTimeSlot(!!(plan?.timeSlotStart || plan?.timeSlotEnd));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plan?.id]);
 
   const onSubmit = (data: CreatePlanInput) => {
     startTransition(async () => {
@@ -362,6 +377,15 @@ export function PlanForm({ open, onOpenChange, plan }: PlanFormProps) {
               <Input {...form.register("poolName")} placeholder="e.g., pool-residential" />
             </div>
           </div>
+
+          {Object.keys(form.formState.errors).length > 0 && (
+            <p className="text-sm text-destructive">
+              Please fix the errors above:{" "}
+              {Object.entries(form.formState.errors)
+                .map(([key, err]) => `${key}: ${err?.message}`)
+                .join(", ")}
+            </p>
+          )}
 
           <div className="flex justify-end gap-2 pt-4">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

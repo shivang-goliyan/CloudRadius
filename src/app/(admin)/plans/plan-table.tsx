@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import type { Plan } from "@prisma/client";
+import type { Serialized } from "@/lib/types";
 import { DataTable } from "@/components/tables/data-table";
-import { getPlanColumns } from "./columns";
+import { getPlanColumns, type PlanWithCount } from "./columns";
 import { PlanForm } from "./plan-form";
 import { togglePlanStatus, deletePlan } from "./actions";
 import { Button } from "@/components/ui/button";
@@ -11,22 +11,22 @@ import { Plus, Download } from "lucide-react";
 import { toast } from "sonner";
 
 interface PlanTableProps {
-  data: Plan[];
+  data: Serialized<PlanWithCount>[];
 }
 
 export function PlanTable({ data }: PlanTableProps) {
-  const [editPlan, setEditPlan] = useState<Plan | null>(null);
+  const [editPlan, setEditPlan] = useState<Serialized<PlanWithCount> | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [, startTransition] = useTransition();
 
-  const handleEdit = (plan: Plan) => {
+  const handleEdit = (plan: Serialized<PlanWithCount>) => {
     setEditPlan(plan);
     setShowForm(true);
   };
 
-  const handleClone = (plan: Plan) => {
+  const handleClone = (plan: Serialized<PlanWithCount>) => {
     // Clone by opening form with plan data but no ID
-    setEditPlan({ ...plan, id: "", name: `${plan.name} (Copy)` } as Plan);
+    setEditPlan({ ...plan, id: "", name: `${plan.name} (Copy)` });
     setShowForm(true);
   };
 

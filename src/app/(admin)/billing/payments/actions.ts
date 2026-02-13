@@ -1,15 +1,14 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireTenantId, requireTenantUser } from "@/lib/session";
+import { requireAuthorized } from "@/lib/session";
 import { paymentSchema } from "@/lib/validations/payment.schema";
 import { paymentService } from "@/services/payment.service";
-import type { ActionResponse } from "@/lib/types";
+import { safeErrorMessage, type ActionResponse } from "@/lib/types";
 
 export async function recordPayment(formData: unknown): Promise<ActionResponse> {
   try {
-    const tenantId = await requireTenantId();
-    const user = await requireTenantUser();
+    const { tenantId, user } = await requireAuthorized("payments", "create");
     const validated = paymentSchema.safeParse(formData);
 
     if (!validated.success) {
@@ -19,7 +18,7 @@ export async function recordPayment(formData: unknown): Promise<ActionResponse> 
       };
     }
 
-    const payment = await paymentService.recordPayment(
+    await paymentService.recordPayment(
       tenantId,
       validated.data,
       user.id
@@ -31,11 +30,11 @@ export async function recordPayment(formData: unknown): Promise<ActionResponse> 
       revalidatePath(`/billing/invoices/${validated.data.invoiceId}`);
     }
 
-    return { success: true, data: payment };
+    return { success: true };
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : "Failed to record payment",
+      error: safeErrorMessage(error, "Failed to record payment"),
     };
   }
 }

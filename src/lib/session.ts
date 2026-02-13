@@ -1,5 +1,8 @@
 import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { redirect } from "next/navigation";
 import type { SessionUser } from "@/lib/types";
+import { authorize, type Module, type Action } from "@/lib/rbac";
 
 export async function getSessionUser(): Promise<SessionUser | null> {
   const session = await auth();
@@ -22,6 +25,18 @@ export async function requireTenantUser(): Promise<SessionUser> {
   if (!user.tenantId && user.role !== "SUPER_ADMIN") {
     throw new Error("No tenant context");
   }
+
+  // Check tenant is still active (catches mid-session suspensions)
+  if (user.tenantId) {
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: user.tenantId },
+      select: { status: true },
+    });
+    if (tenant && !["ACTIVE", "TRIAL"].includes(tenant.status)) {
+      redirect("/login?error=TenantSuspended");
+    }
+  }
+
   return user;
 }
 
@@ -29,4 +44,19 @@ export async function requireTenantId(): Promise<string> {
   const user = await requireTenantUser();
   if (!user.tenantId) throw new Error("No tenant context");
   return user.tenantId;
+}
+
+/**
+ * Require authenticated tenant user with specific RBAC permission.
+ * Throws "Forbidden" if the user's role lacks the required permission.
+ * Returns { user, tenantId } for convenience.
+ */
+export async function requireAuthorized(
+  module: Module,
+  action: Action
+): Promise<{ user: SessionUser; tenantId: string }> {
+  const user = await requireTenantUser();
+  authorize(user.role, module, action);
+  if (!user.tenantId) throw new Error("No tenant context");
+  return { user, tenantId: user.tenantId };
 }

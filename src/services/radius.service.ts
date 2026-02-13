@@ -6,7 +6,7 @@ import {
   planToRadiusAttributes,
 } from "@/lib/radius-utils";
 import { sendCoaDisconnect, sendCoaChangeRate } from "@/lib/radius-client";
-import type { Subscriber, Plan, NasDevice, Prisma } from "@prisma/client";
+import type { Subscriber, Plan, NasDevice, Prisma } from "@/generated/prisma";
 
 export interface SessionHistoryParams {
   tenantSlug: string;
@@ -28,32 +28,72 @@ export interface PaginationMeta {
 
 export const radiusService = {
   /**
+   * Format a Date as FreeRADIUS Expiration value
+   * Format: "Mon DD YYYY HH:MM:SS" e.g. "Jan 13 2026 23:59:59"
+   */
+  formatRadiusExpiration(date: Date): string {
+    const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    return `${months[date.getMonth()]} ${date.getDate()} ${date.getFullYear()} 23:59:59`;
+  },
+
+  /**
    * Sync subscriber authentication to radcheck table
-   * Creates or updates username/password entry for RADIUS authentication
+   * Creates or updates username/password entry for RADIUS authentication.
+   * Also syncs Expiration attribute if subscriber has an expiryDate.
    */
   async syncSubscriberAuth(
     tenantSlug: string,
-    subscriber: Subscriber
+    subscriber: Subscriber,
+    cleartextPassword?: string
   ): Promise<void> {
     const radiusUsername = buildRadiusUsername(tenantSlug, subscriber.username);
 
     try {
       await prisma.$transaction(async (tx) => {
-        // Delete existing auth entry
-        await tx.radCheck.deleteMany({
-          where: { username: radiusUsername },
-        });
+        // Sync password if provided
+        if (cleartextPassword) {
+          await tx.radCheck.deleteMany({
+            where: { username: radiusUsername, attribute: "Cleartext-Password" },
+          });
+          await tx.radCheck.create({
+            data: {
+              username: radiusUsername,
+              attribute: "Cleartext-Password",
+              op: ":=",
+              value: cleartextPassword,
+            },
+          });
+        }
 
-        // Create new auth entry with cleartext password
-        // Note: RADIUS will read this directly, bcrypt hash is stored in subscriber table
-        await tx.radCheck.create({
-          data: {
-            username: radiusUsername,
-            attribute: "Cleartext-Password",
-            op: ":=",
-            value: subscriber.passwordHash,
-          },
+        // Sync Expiration attribute
+        await tx.radCheck.deleteMany({
+          where: { username: radiusUsername, attribute: "Expiration" },
         });
+        if (subscriber.expiryDate) {
+          await tx.radCheck.create({
+            data: {
+              username: radiusUsername,
+              attribute: "Expiration",
+              op: ":=",
+              value: this.formatRadiusExpiration(subscriber.expiryDate),
+            },
+          });
+        }
+
+        // Sync Calling-Station-Id (MAC binding)
+        await tx.radCheck.deleteMany({
+          where: { username: radiusUsername, attribute: "Calling-Station-Id" },
+        });
+        if (subscriber.macAddress) {
+          await tx.radCheck.create({
+            data: {
+              username: radiusUsername,
+              attribute: "Calling-Station-Id",
+              op: ":=",
+              value: subscriber.macAddress.toUpperCase(),
+            },
+          });
+        }
       });
 
       console.log(
@@ -61,6 +101,112 @@ export const radiusService = {
       );
     } catch (error) {
       console.error(`[RADIUS] Failed to sync auth for ${radiusUsername}:`, error);
+      throw error;
+    }
+  },
+
+  /**
+   * Enable RADIUS access for a subscriber (status = ACTIVE)
+   * Removes Auth-Type Reject and restores radusergroup mapping
+   */
+  async enableSubscriberRadius(
+    tenantSlug: string,
+    subscriber: Subscriber
+  ): Promise<void> {
+    const radiusUsername = buildRadiusUsername(tenantSlug, subscriber.username);
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        // Remove Auth-Type Reject (unblock authentication)
+        await tx.radCheck.deleteMany({
+          where: { username: radiusUsername, attribute: "Auth-Type" },
+        });
+
+        // Update Expiration if subscriber has one
+        await tx.radCheck.deleteMany({
+          where: { username: radiusUsername, attribute: "Expiration" },
+        });
+        if (subscriber.expiryDate) {
+          await tx.radCheck.create({
+            data: {
+              username: radiusUsername,
+              attribute: "Expiration",
+              op: ":=",
+              value: this.formatRadiusExpiration(subscriber.expiryDate),
+            },
+          });
+        }
+
+        // Sync Calling-Station-Id (MAC binding)
+        await tx.radCheck.deleteMany({
+          where: { username: radiusUsername, attribute: "Calling-Station-Id" },
+        });
+        if (subscriber.macAddress) {
+          await tx.radCheck.create({
+            data: {
+              username: radiusUsername,
+              attribute: "Calling-Station-Id",
+              op: ":=",
+              value: subscriber.macAddress.toUpperCase(),
+            },
+          });
+        }
+
+        // Restore radusergroup mapping if subscriber has a plan
+        if (subscriber.planId) {
+          const groupname = buildRadiusGroupname(tenantSlug, subscriber.planId);
+          const existing = await tx.radUserGroup.findFirst({
+            where: { username: radiusUsername },
+          });
+          if (!existing) {
+            await tx.radUserGroup.create({
+              data: { username: radiusUsername, groupname, priority: 1 },
+            });
+          }
+        }
+      });
+
+      console.log(`[RADIUS] Enabled access for ${radiusUsername}`);
+    } catch (error) {
+      console.error(`[RADIUS] Failed to enable access for ${radiusUsername}:`, error);
+      throw error;
+    }
+  },
+
+  /**
+   * Disable RADIUS access for a subscriber (EXPIRED/SUSPENDED/DISABLED)
+   * Adds Auth-Type Reject to force Access-Reject and removes radusergroup
+   */
+  async disableSubscriberRadius(
+    tenantSlug: string,
+    username: string
+  ): Promise<void> {
+    const radiusUsername = buildRadiusUsername(tenantSlug, username);
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        // Add Auth-Type = Reject to force Access-Reject
+        await tx.radCheck.deleteMany({
+          where: { username: radiusUsername, attribute: "Auth-Type" },
+        });
+        await tx.radCheck.create({
+          data: {
+            username: radiusUsername,
+            attribute: "Auth-Type",
+            op: ":=",
+            value: "Reject",
+          },
+        });
+
+        // Remove radusergroup — no plan attributes even if auth somehow passes
+        await tx.radUserGroup.deleteMany({
+          where: { username: radiusUsername },
+        });
+      });
+
+      console.log(`[RADIUS] Disabled access for ${radiusUsername}`);
+    } catch (error) {
+      console.error(`[RADIUS] Failed to disable access for ${radiusUsername}:`, error);
       throw error;
     }
   },
@@ -110,23 +256,26 @@ export const radiusService = {
   },
 
   /**
-   * Sync plan bandwidth rules to radgroupreply
-   * Creates MikroTik-Rate-Limit and other attributes for the plan group
+   * Sync plan bandwidth rules to radgroupreply and radgroupcheck
+   * Creates MikroTik-Rate-Limit, Simultaneous-Use, and other attributes
    */
   async syncPlanBandwidth(tenantSlug: string, plan: Plan): Promise<void> {
     const groupname = buildRadiusGroupname(tenantSlug, plan.id);
 
     try {
       await prisma.$transaction(async (tx) => {
-        // Delete existing group attributes
+        // Delete existing group reply attributes
         await tx.radGroupReply.deleteMany({
           where: { groupname },
         });
 
-        // Get all attributes for this plan
-        const attributes = planToRadiusAttributes(plan);
+        // Delete existing group check attributes
+        await tx.radGroupCheck.deleteMany({
+          where: { groupname },
+        });
 
-        // Insert all attributes
+        // Insert reply attributes (bandwidth, pool, session timeout)
+        const attributes = planToRadiusAttributes(plan);
         for (const attr of attributes) {
           await tx.radGroupReply.create({
             data: {
@@ -139,8 +288,18 @@ export const radiusService = {
           });
         }
 
+        // Insert check attributes (Simultaneous-Use)
+        await tx.radGroupCheck.create({
+          data: {
+            groupname,
+            attribute: "Simultaneous-Use",
+            op: ":=",
+            value: String(plan.simultaneousDevices || 1),
+          },
+        });
+
         console.log(
-          `[RADIUS] Synced plan bandwidth for group ${groupname} (${attributes.length} attributes)`
+          `[RADIUS] Synced plan for group ${groupname} (${attributes.length} reply attrs, Simultaneous-Use=${plan.simultaneousDevices || 1})`
         );
       });
     } catch (error) {
@@ -223,8 +382,46 @@ export const radiusService = {
   },
 
   /**
+   * Sync per-user reply attributes to radreply table
+   * Handles Framed-IP-Address (static IP assignment)
+   */
+  async syncSubscriberReplyAttributes(
+    tenantSlug: string,
+    subscriber: Subscriber
+  ): Promise<void> {
+    const radiusUsername = buildRadiusUsername(tenantSlug, subscriber.username);
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        // Sync Framed-IP-Address (static IP assignment)
+        await tx.radReply.deleteMany({
+          where: { username: radiusUsername, attribute: "Framed-IP-Address" },
+        });
+        if (subscriber.staticIp) {
+          await tx.radReply.create({
+            data: {
+              username: radiusUsername,
+              attribute: "Framed-IP-Address",
+              op: ":=",
+              value: subscriber.staticIp,
+            },
+          });
+        }
+      });
+
+      console.log(`[RADIUS] Synced reply attributes for ${radiusUsername}`);
+    } catch (error) {
+      console.error(
+        `[RADIUS] Failed to sync reply attributes for ${radiusUsername}:`,
+        error
+      );
+      throw error;
+    }
+  },
+
+  /**
    * Remove subscriber from RADIUS tables
-   * Deletes auth entry and group mappings
+   * Deletes auth entry, reply attributes, and group mappings
    */
   async removeSubscriberAuth(
     tenantSlug: string,
@@ -235,6 +432,7 @@ export const radiusService = {
     try {
       await prisma.$transaction([
         prisma.radCheck.deleteMany({ where: { username: radiusUsername } }),
+        prisma.radReply.deleteMany({ where: { username: radiusUsername } }),
         prisma.radUserGroup.deleteMany({ where: { username: radiusUsername } }),
       ]);
 

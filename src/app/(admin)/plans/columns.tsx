@@ -1,7 +1,11 @@
 "use client";
 
 import type { ColumnDef } from "@tanstack/react-table";
-import type { Plan } from "@prisma/client";
+import type { Plan } from "@/generated/prisma";
+import type { Serialized } from "@/lib/types";
+import { Users } from "lucide-react";
+
+export type PlanWithCount = Plan & { _count: { subscribers: number } };
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,10 +18,10 @@ import { MoreHorizontal, Pencil, ToggleLeft, Trash2, Copy } from "lucide-react";
 import { SortableHeader } from "@/components/tables/sortable-header";
 
 interface PlanColumnsProps {
-  onEdit: (plan: Plan) => void;
+  onEdit: (plan: Serialized<PlanWithCount>) => void;
   onToggle: (id: string) => void;
   onDelete: (id: string) => void;
-  onClone: (plan: Plan) => void;
+  onClone: (plan: Serialized<PlanWithCount>) => void;
 }
 
 export function getPlanColumns({
@@ -25,7 +29,7 @@ export function getPlanColumns({
   onToggle,
   onDelete,
   onClone,
-}: PlanColumnsProps): ColumnDef<Plan>[] {
+}: PlanColumnsProps): ColumnDef<Serialized<PlanWithCount>>[] {
   return [
     {
       accessorKey: "name",
@@ -99,6 +103,19 @@ export function getPlanColumns({
           {row.original.planType}
         </Badge>
       ),
+    },
+    {
+      id: "subscribers",
+      header: "Subscribers",
+      cell: ({ row }) => {
+        const count = row.original._count.subscribers;
+        return (
+          <span className="flex items-center gap-1 text-sm">
+            <Users className="h-3.5 w-3.5 text-muted-foreground" />
+            {count}
+          </span>
+        );
+      },
     },
     {
       accessorKey: "status",

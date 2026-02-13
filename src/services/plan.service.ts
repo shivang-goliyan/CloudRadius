@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import type { CreatePlanInput, UpdatePlanInput } from "@/lib/validations/plan.schema";
-import type { Plan, Prisma } from "@prisma/client";
+import type { Plan, Prisma } from "@/generated/prisma";
 import { radiusService } from "./radius.service";
 
 export interface PlanListParams {
@@ -45,6 +45,7 @@ export const planService = {
     const [data, total] = await Promise.all([
       prisma.plan.findMany({
         where,
+        include: { _count: { select: { subscribers: true } } },
         orderBy: { [sortBy]: sortOrder },
         skip: (page - 1) * pageSize,
         take: pageSize,

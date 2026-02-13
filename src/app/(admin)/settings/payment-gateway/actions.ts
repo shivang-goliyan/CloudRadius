@@ -1,16 +1,16 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireTenantId } from "@/lib/session";
+import { requireAuthorized } from "@/lib/session";
 import { paymentGatewaySchema } from "@/lib/validations/payment-gateway.schema";
 import { prisma } from "@/lib/prisma";
-import type { ActionResponse } from "@/lib/types";
+import { safeErrorMessage, type ActionResponse } from "@/lib/types";
 
 export async function createPaymentGateway(
   formData: unknown
 ): Promise<ActionResponse> {
   try {
-    const tenantId = await requireTenantId();
+    const { tenantId } = await requireAuthorized("settings", "edit");
     const validated = paymentGatewaySchema.safeParse(formData);
 
     if (!validated.success) {
@@ -50,8 +50,7 @@ export async function createPaymentGateway(
   } catch (error) {
     return {
       success: false,
-      error:
-        error instanceof Error ? error.message : "Failed to configure gateway",
+      error: safeErrorMessage(error, "Failed to configure gateway"),
     };
   }
 }
@@ -60,7 +59,7 @@ export async function deletePaymentGateway(
   id: string
 ): Promise<ActionResponse> {
   try {
-    const tenantId = await requireTenantId();
+    const { tenantId } = await requireAuthorized("settings", "edit");
 
     await prisma.paymentGateway.delete({
       where: { id, tenantId },
@@ -71,7 +70,7 @@ export async function deletePaymentGateway(
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : "Failed to delete gateway",
+      error: safeErrorMessage(error, "Failed to delete gateway"),
     };
   }
 }

@@ -1,18 +1,22 @@
-import { requireTenantId } from "@/lib/session";
+import { Suspense } from "react";
+import { requireTenantUser } from "@/lib/session";
 import { subscriberService } from "@/services/subscriber.service";
 import { planService } from "@/services/plan.service";
 import { nasService } from "@/services/nas.service";
 import { locationService } from "@/services/location.service";
 import { SubscriberTable } from "./subscriber-table";
+import { serialize } from "@/lib/types";
 import { Card, CardContent } from "@/components/ui/card";
 import { Users, UserCheck, UserX, Clock } from "lucide-react";
+import { hasPermission } from "@/lib/rbac";
 
 export const metadata = {
   title: "Subscribers",
 };
 
 export default async function SubscribersPage() {
-  const tenantId = await requireTenantId();
+  const user = await requireTenantUser();
+  const tenantId = user.tenantId!;
 
   const [result, stats, plans, nasDevices, locations] = await Promise.all([
     subscriberService.list({ tenantId, pageSize: 100 }),
@@ -55,12 +59,17 @@ export default async function SubscribersPage() {
         ))}
       </div>
 
-      <SubscriberTable
-        data={result.data}
-        plans={plans}
-        nasDevices={nasDevices}
-        locations={locations}
-      />
+      <Suspense>
+        <SubscriberTable
+          data={serialize(result.data)}
+          plans={serialize(plans)}
+          nasDevices={nasDevices}
+          locations={locations}
+          canCreate={hasPermission(user.role, "subscribers", "create")}
+          canEdit={hasPermission(user.role, "subscribers", "edit")}
+          canDelete={hasPermission(user.role, "subscribers", "delete")}
+        />
+      </Suspense>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import type { Plan, SpeedUnit } from "@prisma/client";
+import type { Plan, SpeedUnit } from "@/generated/prisma";
 
 /**
  * Builds MikroTik-Rate-Limit attribute value from Plan
@@ -10,28 +10,19 @@ export function buildMikroTikRateLimit(plan: Plan): string {
   const rx = `${plan.downloadSpeed}${unit}`;
   const tx = `${plan.uploadSpeed}${unit}`;
 
-  // Burst parameters (optional)
-  let burstRx = rx;
-  let burstTx = tx;
-  let thresholdRx = "0";
-  let thresholdTx = "0";
-  let time = "0s/0s";
+  // If burst parameters are configured (with non-zero burst time), include them
+  if (plan.burstDownloadSpeed && plan.burstUploadSpeed && plan.burstTime) {
+    const burstRx = `${plan.burstDownloadSpeed}${unit}`;
+    const burstTx = `${plan.burstUploadSpeed}${unit}`;
+    const thresholdRx = plan.burstThreshold ? `${plan.burstThreshold}k` : "0";
+    const thresholdTx = plan.burstThreshold ? `${plan.burstThreshold}k` : "0";
+    const time = `${plan.burstTime}s/${plan.burstTime}s`;
 
-  if (plan.burstDownloadSpeed && plan.burstUploadSpeed) {
-    burstRx = `${plan.burstDownloadSpeed}${unit}`;
-    burstTx = `${plan.burstUploadSpeed}${unit}`;
-
-    if (plan.burstThreshold) {
-      thresholdRx = `${plan.burstThreshold}k`;
-      thresholdTx = `${plan.burstThreshold}k`;
-    }
-
-    if (plan.burstTime) {
-      time = `${plan.burstTime}s/${plan.burstTime}s`;
-    }
+    return `${rx}/${tx} ${burstRx}/${burstTx} ${thresholdRx}/${thresholdTx} ${time} ${plan.priority}`;
   }
 
-  return `${rx}/${tx} ${burstRx}/${burstTx} ${thresholdRx}/${thresholdTx} ${time} ${plan.priority}`;
+  // No burst — simple rate limit only
+  return `${rx}/${tx}`;
 }
 
 /**
@@ -41,13 +32,12 @@ export function buildFupRateLimit(
   fupDownloadSpeed: number,
   fupUploadSpeed: number,
   speedUnit: SpeedUnit,
-  priority: number = 8
 ): string {
   const unit = speedUnit === "MBPS" ? "M" : "k";
   const rx = `${fupDownloadSpeed}${unit}`;
   const tx = `${fupUploadSpeed}${unit}`;
 
-  return `${rx}/${tx} ${rx}/${tx} 0/0 0s/0s ${priority}`;
+  return `${rx}/${tx}`;
 }
 
 /**

@@ -8,30 +8,31 @@ export const metadata = {
 };
 
 interface PageProps {
-  searchParams: {
+  searchParams: Promise<{
     page?: string;
     search?: string;
     nasIp?: string;
     startDate?: string;
     endDate?: string;
-  };
+  }>;
 }
 
 export default async function SessionsPage({ searchParams }: PageProps) {
   const user = await requireTenantUser();
+  const params = await searchParams;
 
   if (!user.tenantSlug) {
     return <div>No tenant context</div>;
   }
 
-  const page = parseInt(searchParams.page || "1");
-  const startDate = searchParams.startDate ? new Date(searchParams.startDate) : undefined;
-  const endDate = searchParams.endDate ? new Date(searchParams.endDate) : undefined;
+  const page = parseInt(params.page || "1");
+  const startDate = params.startDate ? new Date(params.startDate) : undefined;
+  const endDate = params.endDate ? new Date(params.endDate) : undefined;
 
   const result = await radiusService.getSessionHistory({
     tenantSlug: user.tenantSlug,
-    subscriberUsername: searchParams.search,
-    nasIp: searchParams.nasIp,
+    subscriberUsername: params.search,
+    nasIp: params.nasIp,
     startDate,
     endDate,
     page,

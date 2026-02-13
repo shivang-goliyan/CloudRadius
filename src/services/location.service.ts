@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import type { CreateLocationInput, UpdateLocationInput } from "@/lib/validations/location.schema";
-import type { LocationType, Prisma } from "@prisma/client";
+import type { LocationType, Prisma } from "@/generated/prisma";
 
 export interface LocationListParams {
   tenantId: string;

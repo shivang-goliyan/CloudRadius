@@ -1,16 +1,14 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import type { NasDevice, Location } from "@prisma/client";
+import type { Location } from "@/generated/prisma";
 import { DataTable } from "@/components/tables/data-table";
-import { getNasColumns } from "./columns";
+import { getNasColumns, type NasWithLocation } from "./columns";
 import { NasForm } from "./nas-form";
 import { deleteNasDevice } from "./actions";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
-
-type NasWithLocation = NasDevice & { location: Location | null };
 
 interface NasTableProps {
   data: NasWithLocation[];

@@ -40,17 +40,17 @@ services:
       - "1813:1813/udp"
       - "3799:3799/udp"
     volumes:
-      - ./radius/radiusd.conf:/etc/raddb/radiusd.conf:ro
-      - ./radius/clients.conf:/etc/raddb/clients.conf:ro
-      - ./radius/sql.conf:/etc/raddb/mods-available/sql:ro
-      - ./radius/dictionary.mikrotik:/etc/raddb/dictionary.mikrotik:ro
-      - ./radius/default:/etc/raddb/sites-enabled/default:ro
+      - ./radius/radiusd.conf:/etc/freeradius/radiusd.conf:ro
+      - ./radius/clients.conf:/etc/freeradius/clients.conf:ro
+      - ./radius/sql.conf:/etc/freeradius/mods-enabled/sql:ro
+      - ./radius/dictionary.mikrotik:/etc/freeradius/dictionary.mikrotik:ro
+      - ./radius/default:/etc/freeradius/sites-enabled/default:ro
     depends_on:
       postgres:
         condition: service_healthy
     environment:
       POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
+      POSTGRES_PORT: "5432"
       POSTGRES_USER: cloudradius
       POSTGRES_PASSWORD: cloudradius
       POSTGRES_DB: cloudradius

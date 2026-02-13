@@ -1,9 +1,10 @@
 import { prisma } from "@/lib/prisma";
-import type { SmsProvider, SmsGateway } from "@prisma/client";
+import type { SmsProvider, SmsGateway, Prisma } from "@/generated/prisma";
 import type { SmsAdapter, SendSmsResponse } from "./sms.interface";
 import { MSG91Adapter } from "./msg91.adapter";
 import { TextlocalAdapter } from "./textlocal.adapter";
 import { TwilioAdapter } from "./twilio.adapter";
+import { WhatsAppAdapter } from "./whatsapp.adapter";
 
 /**
  * SMS Service
@@ -53,7 +54,7 @@ export const smsService = {
       senderId: string;
       apiUrl?: string;
       status?: "ACTIVE" | "INACTIVE";
-      config?: Record<string, unknown>;
+      config?: Prisma.InputJsonValue;
     }
   ) {
     // If this is the first gateway or marked as active, deactivate others
@@ -85,7 +86,7 @@ export const smsService = {
       senderId?: string;
       apiUrl?: string;
       status?: "ACTIVE" | "INACTIVE";
-      config?: Record<string, unknown>;
+      config?: Prisma.InputJsonValue;
     }
   ) {
     // If marking as active, deactivate others
@@ -147,6 +148,8 @@ export const smsService = {
         return new TextlocalAdapter(config);
       case "TWILIO":
         return new TwilioAdapter(config);
+      case "WHATSAPP":
+        return new WhatsAppAdapter(config);
       case "CUSTOM":
         throw new Error("Custom SMS gateway not implemented yet");
       default:
@@ -191,6 +194,29 @@ export const smsService = {
     message: string
   ): Promise<SendSmsResponse> {
     try {
+      const adapter = this.createAdapter(gateway);
+      return await adapter.sendSms({ to, message });
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
+  },
+
+  /**
+   * Send WhatsApp message using active WhatsApp gateway
+   */
+  async sendWhatsApp(tenantId: string, to: string, message: string): Promise<SendSmsResponse> {
+    try {
+      const gateway = await prisma.smsGateway.findFirst({
+        where: { tenantId, provider: "WHATSAPP", status: "ACTIVE" },
+      });
+
+      if (!gateway) {
+        return { success: false, error: "No active WhatsApp gateway configured" };
+      }
+
       const adapter = this.createAdapter(gateway);
       return await adapter.sendSms({ to, message });
     } catch (error) {

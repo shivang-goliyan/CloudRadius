@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { PaymentMethod, PaymentStatus } from "@prisma/client";
+import { PaymentMethod, PaymentStatus } from "@/generated/prisma";
 
 export const paymentSchema = z.object({
   subscriberId: z.string().uuid("Invalid subscriber"),

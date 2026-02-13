@@ -1,7 +1,7 @@
 # BUILD PROGRESS — CloudRadius SaaS Platform
 
 **Last Updated:** February 2026
-**Current Phase:** Phase 4 Complete, Ready for Phase 5
+**Current Phase:** Phase 8 In Progress (Deployment)
 
 ---
 
@@ -415,6 +415,302 @@ SMTP_PASSWORD=
 
 ---
 
+## PHASE 5: Vouchers, Hotspot Portal & CRM — COMPLETE
+
+### What was built:
+
+#### Prisma Schema additions:
+- **6 new enums:** `VoucherStatus`, `TicketStatus`, `TicketPriority`, `TicketCategory`, `LeadStatus`, `LeadSource`
+- **6 new models:** `VoucherBatch`, `Voucher`, `Ticket`, `TicketComment`, `Lead`, `CaptivePortalConfig`
+- Updated `Tenant`, `User`, `Subscriber`, `Plan`, `Location` models with Phase 5 relations
+- Multi-tenant isolation via `tenantId` on all models
+
+#### Voucher System (`src/services/voucher.service.ts`)
+- **Batch generation** — Create batches of unique alphanumeric voucher codes
+- **Code generation** — Cryptographically random, avoids confusing chars (0/O/1/I)
+- **Voucher lifecycle** — Generated → Sold → Redeemed → Expired
+- **Batch management** — List, delete, export CSV
+- **Print-ready cards** — Grid layout with plan details, voucher code, pricing
+- **Redemption** — Validates code, creates RADIUS entries, assigns plan
+- **Stats** — Total, generated, sold, redeemed, expired counts
+
+#### Voucher UI (`src/app/(admin)/vouchers/`)
+- `page.tsx` — Stats cards + batch list view
+- `voucher-table.tsx` — Batch cards with status breakdown, actions (view, print, export CSV, delete)
+- `generate-form.tsx` — Dialog form to create batch (plan, quantity, prefix, code length, validity)
+- `[batchId]/page.tsx` — Voucher list within batch
+- `[batchId]/voucher-list.tsx` — Table with select, mark as sold, search
+- `[batchId]/print/page.tsx` — Print-ready voucher cards page
+- `[batchId]/print/printable-cards.tsx` — Printable grid cards with plan info and voucher code
+- `actions.ts` — Server actions: generateVoucherBatch, markVouchersSold, deleteVoucherBatch, exportCsv
+
+#### CRM & Helpdesk (`src/services/ticket.service.ts`)
+- **Ticket CRUD** — Create, update, delete with tenant isolation
+- **Auto ticket numbering** — TKT-001, TKT-002, etc.
+- **Status transitions** — Open → Assigned → In Progress → Resolved → Closed
+- **Comment threads** — Public comments and internal notes
+- **Assignment** — Assign/reassign to staff members
+- **Priority levels** — Low, Medium, High, Critical
+- **Categories** — Connectivity, Billing, Speed, Installation, Other
+- **Stats** — Counts by status, open ticket count for sidebar badge
+
+#### Ticket UI (`src/app/(admin)/complaints/`)
+- `page.tsx` — Stats cards (6 statuses) + ticket list
+- `ticket-table.tsx` — Filterable ticket list with status/priority filters, quick status actions
+- `ticket-form.tsx` — Dialog form to create ticket with subscriber/assignee selection
+- `[id]/page.tsx` — Ticket detail page
+- `[id]/ticket-detail.tsx` — Full ticket view with:
+  - Comment thread (public + internal notes with different styling)
+  - Sidebar: status/priority/assignee controls, subscriber info card
+  - Add comment with internal note toggle
+- `actions.ts` — Server actions: createTicket, updateTicket, addComment, deleteTicket
+
+#### Lead Management (`src/services/lead.service.ts`)
+- **Lead CRUD** — Create, update, delete with tenant isolation
+- **Lead pipeline** — New → Contacted → Site Survey → Installation Scheduled → Converted → Lost
+- **Convert to subscriber** — Pre-fills subscriber form with lead data
+- **Source tracking** — Walk In, Referral, Website, Phone, Social Media, Other
+- **Stats** — Counts by status, conversion rate
+
+#### Lead UI (`src/app/(admin)/leads/`)
+- `page.tsx` — Stats cards (7 metrics including conversion rate) + lead table
+- `lead-table.tsx` — Table with search, status filter, quick "Next" advancement button, edit, delete
+- `lead-form.tsx` — Dialog form for add/edit lead with location selection
+- `actions.ts` — Server actions: createLead, updateLead, updateLeadStatus, deleteLead, markLeadConverted
+
+#### Captive Portal — Public Login Page
+- `src/app/hotspot/[tenantSlug]/page.tsx` — Public-facing hotspot login page
+- `src/app/hotspot/[tenantSlug]/login-form.tsx` — Mobile-first login form with:
+  - **Username/Password** — RADIUS subscriber authentication
+  - **OTP via SMS** — Send and verify OTP for phone-based login
+  - **Voucher Code** — Instant access with pre-purchased voucher
+  - Tab switching between login methods
+  - Terms of Service acceptance
+  - Post-login redirect
+  - Tenant-branded (logo, colors, background, welcome message)
+
+#### Captive Portal — Admin Settings
+- `src/app/(admin)/settings/captive-portal/page.tsx` — Portal configuration page with portal URL display
+- `src/app/(admin)/settings/captive-portal/portal-config-form.tsx` — Full settings form:
+  - Enable/disable toggle with preview link
+  - Branding: logo URL, background image URL, primary color picker
+  - Welcome title and message
+  - Login method toggles (Username/Password, OTP, Voucher)
+  - Terms of Service text area
+  - Post-login redirect URL
+- `src/app/(admin)/settings/captive-portal/actions.ts` — Server action: saveCaptivePortalConfig
+
+#### Captive Portal Service (`src/services/captive-portal.service.ts`)
+- Get config by tenant slug (for public page)
+- Get/upsert config by tenant ID (for admin settings)
+- Authenticate via username/password (bcrypt compare against subscriber)
+- Authenticate via voucher code (redeem + create RADIUS entries)
+
+#### Hotspot API Routes
+- `/api/hotspot/login` — POST: Authenticate with username/password or voucher code
+- `/api/hotspot/otp/send` — POST: Send OTP for hotspot login
+- `/api/hotspot/otp/verify` — POST: Verify OTP for hotspot login
+
+#### RADIUS Integration for Vouchers
+- On voucher redemption: creates `radcheck` entry (voucher code as password)
+- Maps voucher user to plan group in `radusergroup` for bandwidth enforcement
+- MikroTik authenticates voucher users the same way as regular subscribers
+
+#### Validation Schemas (`src/lib/validations/`)
+- `voucher.schema.ts` — Batch generation and mark-sold validation
+- `ticket.schema.ts` — Create ticket, update ticket, add comment validation
+- `lead.schema.ts` — Lead create/update validation
+
+#### Sidebar Navigation Updates
+- Added "Captive Portal" entry with Globe icon under Settings
+- Vouchers, Complaints, Leads entries already existed from Phase 0 scaffolding
+
+#### Seed Data
+- 1 voucher batch (BATCH-001) with 20 vouchers: 15 generated, 3 sold, 2 redeemed
+- 5 tickets with varied statuses and priorities, with comments on first ticket
+- 5 leads across all pipeline stages (new, contacted, site survey, scheduled, lost)
+- Captive portal config enabled for demo-isp tenant
+
+### Key files:
+- Schema: `prisma/schema.prisma` (Phase 5 enums + 6 new models)
+- Voucher service: `src/services/voucher.service.ts`
+- Ticket service: `src/services/ticket.service.ts`
+- Lead service: `src/services/lead.service.ts`
+- Portal service: `src/services/captive-portal.service.ts`
+- Voucher UI: `src/app/(admin)/vouchers/`
+- Ticket UI: `src/app/(admin)/complaints/`
+- Lead UI: `src/app/(admin)/leads/`
+- Portal settings: `src/app/(admin)/settings/captive-portal/`
+- Hotspot login: `src/app/hotspot/[tenantSlug]/`
+- Hotspot API: `src/app/api/hotspot/`
+- Validations: `src/lib/validations/{voucher,ticket,lead}.schema.ts`
+- Seed: `prisma/seed.ts` (updated with Phase 5 data)
+
+### Captive Portal URL:
+```
+/hotspot/{tenant-slug}
+Example: /hotspot/demo-isp
+```
+
+### Dependencies (already installed):
+No new dependencies needed. Uses existing bcryptjs, prisma, and Next.js features.
+
+---
+
+## PHASE 6: Reports, Dashboard & Subscriber Portal — COMPLETE
+
+### What was built:
+
+#### 1. Admin Dashboard (default landing page)
+- **8 Real KPI Cards:** Total subscribers, active, expired, new this month, MRR, collections this month, outstanding amount, online now (from radAcct)
+- **4 Recharts Charts:** Subscriber growth (LineChart, 12 months), Revenue trend (BarChart, 12 months), Plan distribution (PieChart/donut), Area-wise subscribers (horizontal BarChart)
+- **Recent Activity Feed:** Mixed feed of latest subscribers, payments, invoices, tickets — color-coded icons, relative timestamps
+- **Quick Action Buttons:** Add Subscriber, Record Payment
+
+#### 2. Reports Module (10 report types)
+- **Shared Components:** `ReportFilters` (date range, status, plan, location, NAS, method filters + export buttons), `ReportTable` (generic paginated table with column definitions), `export-utils.ts` (CSV via PapaParse, Excel via SheetJS, print)
+- **Report Types:**
+  1. **Subscriber Report** — List by status, plan, area, NAS, date range
+  2. **Billing Report** — Invoices with summary cards (total invoiced, paid, outstanding)
+  3. **Collection Report** — Payments with by-method breakdown summary
+  4. **Revenue Report** — Revenue by plan with Recharts BarChart visualization
+  5. **Expiry Report** — Subscribers expiring in next N days with color-coded urgency badges
+  6. **Churn Report** — Expired subscribers with churn rate, churned, and active summary cards
+  7. **Session Report** — RadAcct sessions with total upload/download/session time summaries
+  8. **Usage Report** — Per-subscriber data consumption from radAcct
+  9. **Voucher Report** — Voucher status counts (generated/sold/redeemed/expired)
+  10. **NAS Report** — NAS devices with subscriber counts
+- All reports support: pagination, CSV export, Excel export, print
+
+#### 3. Subscriber Self-Service Portal (mobile-first)
+- **Route Group:** `(portal)/portal/` with own layout, separate from admin
+- **Auth:** JWT-based (jose library), HTTP-only `portal-token` cookie, separate from admin NextAuth
+- **Login:** Username/phone + password, bcrypt verification, gradient UI
+- **Portal Dashboard:** Plan info, speed, data usage, expiry countdown, balance due
+- **Portal Billing:** Invoice list with status badges and amounts
+- **Portal Complaints:** Ticket list + new complaint dialog with auto-generated ticket numbers
+- **Portal Profile:** Edit name, phone, email, address
+- **Mobile-First Layout:** Bottom tab navigation, max-w-lg container, responsive design
+
+#### 4. API Routes
+- `POST /api/portal/login` — Subscriber authentication, JWT issuance
+- `POST /api/portal/logout` — Cookie deletion
+- `POST /api/portal/tickets` — Create support ticket
+- `PUT /api/portal/profile` — Update subscriber profile
+
+### Key files:
+- Dashboard service: `src/services/dashboard.service.ts`
+- Dashboard page: `src/app/(admin)/dashboard/page.tsx`
+- Dashboard charts: `src/app/(admin)/dashboard/dashboard-charts.tsx`
+- Recent activity: `src/app/(admin)/dashboard/recent-activity.tsx`
+- Report service: `src/services/report.service.ts`
+- Reports hub: `src/app/(admin)/reports/page.tsx`
+- Report shared: `src/app/(admin)/reports/{report-filters,report-table,export-utils}.tsx`
+- Report actions: `src/app/(admin)/reports/actions.ts`
+- 10 report pages: `src/app/(admin)/reports/{subscribers,billing,collections,revenue,expiry,churn,sessions,usage,vouchers,nas}/`
+- Portal service: `src/services/portal.service.ts`
+- Portal session: `src/lib/portal-session.ts`
+- Portal layout: `src/app/(portal)/layout.tsx`
+- Portal auth layout: `src/app/(portal)/portal/(authenticated)/layout.tsx`
+- Portal nav: `src/app/(portal)/portal/portal-nav.tsx`
+- Portal pages: `src/app/(portal)/portal/(authenticated)/{dashboard,billing,complaints,profile}/`
+- Portal login: `src/app/(portal)/portal/login/`
+- Portal API: `src/app/api/portal/{login,logout,tickets,profile}/`
+
+### Dependencies (already installed):
+No new dependencies needed. Uses existing recharts, xlsx (SheetJS), jose, bcryptjs, date-fns, and Next.js features.
+
+---
+
+## PHASE 7: RBAC, Multi-Location, Settings & Polish — COMPLETE
+
+### What was built:
+
+#### 1. RBAC (Role-Based Access Control)
+- **Permission matrix** in `src/lib/rbac.ts` mapping 7 roles to module:action permissions
+- **5 operational roles:** Super Admin, Admin (TENANT_ADMIN), Manager, Operator (STAFF), Viewer (COLLECTOR) + Franchise + Subscriber
+- **Module permissions:** dashboard, subscribers, plans, billing, payments, vouchers, nas, locations, online_users, sessions, complaints, leads, reports, settings, users, super_admin
+- **Action types:** view, create, edit, delete, export with wildcard support (`module:*`, `*`)
+- **`authorize()`** function for server actions and API routes — throws on permission denied
+- **`hasPermission()`** and **`hasAnyPermission()`** for client-side checks
+- **Role-based sidebar navigation** — each role sees only their permitted modules
+- **Role labels and badge styling** per role
+
+#### 2. Multi-Location / Franchise Scoping
+- **User.locationId** added to Prisma schema — optional foreign key to Location
+- **`userService.getLocationScope()`** — recursively gets all child location IDs for franchise/manager scoping
+- **Location assignment** in user management — franchise operators see only their area's data
+- **User-Location relation** with index on `[tenantId, locationId]`
+
+#### 3. Super Admin Panel
+- **Route group:** `(super-admin)/super-admin/` with own layout
+- **Layout guard:** redirects non-SUPER_ADMIN users to `/dashboard`
+- **Platform Dashboard:** 6 KPI cards (Total Tenants, Active, Trial, Suspended, Total Subscribers, Total Users) + recent tenants table
+- **Tenant Management:** full CRUD — list all tenants with subscriber/user counts, create tenant (auto-creates admin user), suspend/activate tenants
+- **System Settings:** placeholder page for RADIUS servers, platform billing, global defaults
+- **Tenant service:** `src/services/tenant.service.ts` — list, create, update, suspend, activate, getPlatformStats
+
+#### 4. User Management
+- **Users & Roles page:** `src/app/(admin)/settings/users/` — full team management
+- **User table** with role badges, status badges, location, last login
+- **Invite user** dialog — React Hook Form + Zod validation, role selection, location assignment
+- **Edit user** dialog — update role, status, location
+- **Deactivate user** with confirmation dialog
+- **User service:** `src/services/user.service.ts` — CRUD, bcrypt password hashing, location scoping
+
+#### 5. Consolidated Settings
+- **Settings hub** with 9 linked cards, filtered by role permissions
+- **Company Profile** — edit name, domain, logo, address, phone, tax number (stored in Tenant.settings JSON)
+- **Billing Preferences** — currency, invoice prefix, tax rate/label, grace period, auto-generate toggle
+- **RADIUS Config** — read-only display of server connection details + MikroTik setup guide
+- **Notification Templates** — table of existing templates with event, channel, variables, status
+- **Existing settings preserved:** Payment Gateway, SMS Gateway, Email SMTP, Captive Portal
+
+#### 6. Dark Mode
+- **next-themes** installed and configured with ThemeProvider in root layout
+- **Dark mode toggle** in topbar (Sun/Moon icon animation)
+- **Class-based dark mode** — `.dark` CSS variables already defined in globals.css
+- **System theme detection** enabled by default
+
+#### 7. UI Polish
+- **Loading skeletons** for Dashboard, Subscribers, Plans, Billing, Reports, Settings, Online Users, Super Admin Dashboard
+- **Error boundaries** for admin and super-admin route groups with retry button
+- **Skeleton component** (`src/components/ui/skeleton.tsx`) — reusable animated placeholder
+- **Mobile hamburger menu** on sidebar with overlay
+- **Responsive topbar** with smaller gaps on mobile
+- **Responsive main content** with adjusted padding
+
+#### 8. Middleware Updates
+- **Role-based routing:** Super admins auto-redirected to `/super-admin/dashboard`
+- **Route protection:** `/super-admin/*` routes blocked for non-super-admins
+- **Portal/hotspot paths** allowed without admin auth
+
+### Key files:
+- RBAC: `src/lib/rbac.ts`
+- User service: `src/services/user.service.ts`
+- Tenant service: `src/services/tenant.service.ts`
+- User validation: `src/lib/validations/user.schema.ts`
+- Super admin layout: `src/app/(super-admin)/layout.tsx`
+- Super admin dashboard: `src/app/(super-admin)/super-admin/dashboard/page.tsx`
+- Tenant management: `src/app/(super-admin)/super-admin/tenants/`
+- User management: `src/app/(admin)/settings/users/`
+- Company profile: `src/app/(admin)/settings/company/`
+- Billing preferences: `src/app/(admin)/settings/billing-preferences/`
+- RADIUS config: `src/app/(admin)/settings/radius/page.tsx`
+- Notification templates: `src/app/(admin)/settings/notifications/page.tsx`
+- Updated sidebar: `src/components/layouts/sidebar.tsx`
+- Updated topbar: `src/components/layouts/topbar.tsx`
+- Updated middleware: `src/middleware.ts`
+- Root layout: `src/app/layout.tsx` (ThemeProvider added)
+- Skeleton: `src/components/ui/skeleton.tsx`
+- Error boundaries: `src/app/(admin)/error.tsx`, `src/app/(super-admin)/error.tsx`
+- Loading pages: `src/app/(admin)/{dashboard,subscribers,plans,billing,reports,settings,online-users}/loading.tsx`
+
+### Dependencies added:
+- `next-themes` v0.4.6 — dark mode support
+
+---
+
 ## Build Status
 
 ```
@@ -423,11 +719,48 @@ Phase 1 (Subscribers/Plans) █████████████████�
 Phase 2 (RADIUS)            ████████████████████ COMPLETE
 Phase 3 (Billing)           ████████████████████ COMPLETE
 Phase 4 (Notifications)     ████████████████████ COMPLETE
-Phase 5 (Vouchers/CRM)      ░░░░░░░░░░░░░░░░░░░░ NOT STARTED
-Phase 6 (Reports/Portal)    ░░░░░░░░░░░░░░░░░░░░ NOT STARTED
-Phase 7 (RBAC/Settings)     ░░░░░░░░░░░░░░░░░░░░ NOT STARTED
-Phase 8 (Deployment)        ░░░░░░░░░░░░░░░░░░░░ NOT STARTED
+Phase 5 (Vouchers/CRM)      ████████████████████ COMPLETE
+Phase 6 (Reports/Portal)    ████████████████████ COMPLETE
+Phase 7 (RBAC/Settings)     ████████████████████ COMPLETE
+Phase 8 (Deployment)        ██████████░░░░░░░░░░ IN PROGRESS
 ```
+
+---
+
+## PHASE 8: Deployment & DevOps — IN PROGRESS
+
+### What was built:
+1. **Oracle Cloud Free Tier** chosen (ARM VM, 4 OCPU, 24 GB RAM, free forever)
+2. **Production Docker Compose** — PostgreSQL + Redis (localhost-only, strong passwords)
+3. **PM2 ecosystem config** — Next.js web + BullMQ worker processes
+4. **Nginx reverse proxy** — SSL/TLS, rate limiting, gzip, security headers, static caching
+5. **FreeRADIUS production configs** — Hardened clients.conf (no wildcard), DB-based NAS clients
+6. **GitHub Actions CI/CD** — Auto-deploy on push to main (SSH → pull → build → restart)
+7. **Health check script** — Checks all services, ports, memory, disk
+8. **Database backup cron** — Daily pg_dump, 7-day retention
+9. **Deployment guide** — Step-by-step from OCI signup to brother's router testing
+10. **Defensive security hardening** — 23 vulnerabilities found and fixed pre-deployment
+
+### Architecture:
+- **Hybrid approach:** Docker for stateful services (PostgreSQL, Redis), native for everything else
+- **Single ARM VM:** Next.js (PM2) + FreeRADIUS (systemd) + Nginx (SSL) + Docker (DB/Cache)
+- **CI/CD:** Push to main → GitHub Actions SSH → pull → build → restart
+
+### Key files:
+- Deployment guide: `DEPLOYMENT_GUIDE.md`
+- Production Docker Compose: `deploy/docker-compose.prod.yml`
+- PM2 config: `deploy/ecosystem.config.cjs`
+- Nginx config: `deploy/nginx/cloudradius`
+- FreeRADIUS production: `deploy/freeradius/{radiusd.conf,sql.conf,clients.conf,default}`
+- CI/CD: `.github/workflows/deploy.yml`
+- Health check: `deploy/healthcheck.sh`
+- Testing guide: `TESTING_WITH_BROTHER.md`
+
+### Remaining:
+- [ ] Create Oracle Cloud account and VM
+- [ ] Buy domain and configure DNS
+- [ ] Run deployment steps from DEPLOYMENT_GUIDE.md
+- [ ] Brother tests with MikroTik router
 
 ---
 
@@ -438,10 +771,25 @@ Phase 8 (Deployment)        ░░░░░░░░░░░░░░░░░�
 
 ---
 
+## Important: Prisma Client Custom Output
+
+The Prisma client is generated to `src/generated/prisma/` (not the default `node_modules/.prisma/client/`).
+This was done to work around root-owned files in `node_modules/.pnpm/@prisma+client*/`.
+
+All imports use `@/generated/prisma` instead of `@prisma/client`.
+
+### Fix root-owned files (one-time):
+```bash
+sudo chown -R $USER:$USER node_modules/.pnpm/@prisma+client* .next/build
+```
+
+---
+
 ## To run locally:
 ```bash
 docker compose up -d          # Start PostgreSQL + Redis
-pnpm db:migrate               # Run migrations (or db:push for dev)
+npx prisma db push            # Sync schema
+npx prisma generate           # Generate client to src/generated/prisma/
 pnpm db:seed                  # Seed demo data
 pnpm dev                      # Start dev server
 ```
