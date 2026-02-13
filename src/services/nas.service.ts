@@ -2,6 +2,21 @@ import { prisma } from "@/lib/prisma";
 import type { CreateNasDeviceInput, UpdateNasDeviceInput } from "@/lib/validations/nas.schema";
 import type { NasDevice, Prisma } from "@/generated/prisma";
 import { radiusService } from "./radius.service";
+import { exec } from "child_process";
+
+/**
+ * Restart FreeRADIUS so it picks up NAS client changes from the database.
+ * Requires passwordless sudo: /etc/sudoers.d/freeradius-restart
+ */
+function reloadFreeRadius(): void {
+  exec("sudo systemctl restart freeradius", (error) => {
+    if (error) {
+      console.error("[NAS] FreeRADIUS restart failed:", error.message);
+    } else {
+      console.log("[NAS] FreeRADIUS restarted (NAS client change)");
+    }
+  });
+}
 
 export interface NasListParams {
   tenantId: string;
@@ -93,9 +108,10 @@ export const nasService = {
       },
     });
 
-    // Sync to RADIUS
+    // Sync to RADIUS and restart FreeRADIUS to pick up new client
     try {
       await radiusService.syncNasDevice(nas);
+      reloadFreeRadius();
     } catch (error) {
       console.error("[NAS] RADIUS sync failed on create:", error);
     }
@@ -119,9 +135,10 @@ export const nasService = {
       },
     });
 
-    // Sync to RADIUS
+    // Sync to RADIUS and restart FreeRADIUS to pick up changes
     try {
       await radiusService.syncNasDevice(updated);
+      reloadFreeRadius();
     } catch (error) {
       console.error("[NAS] RADIUS sync failed on update:", error);
     }
@@ -139,9 +156,10 @@ export const nasService = {
       throw new Error("Cannot delete NAS with assigned subscribers");
     }
 
-    // Remove from RADIUS first
+    // Remove from RADIUS and restart FreeRADIUS
     try {
       await radiusService.removeNasDevice(nas.nasIp);
+      reloadFreeRadius();
     } catch (error) {
       console.error("[NAS] RADIUS cleanup failed on delete:", error);
     }
